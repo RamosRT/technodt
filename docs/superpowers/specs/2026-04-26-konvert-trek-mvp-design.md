@@ -116,10 +116,12 @@ id (uuid PK)
 envelope_id (uuid, FK→envelopes, ondelete cascade, indexed)
 doc_barcode (varchar, indexed)
 doc_guid (uuid)
-doc_type (varchar)                    # имя сущности OData
+doc_entity (varchar)                  # имя сущности OData (Document_СчетФактураВыданный | Document_ПеремещениеТоваров)
+doc_kind (varchar)                    # человеко-читаемый вид: «УПД» | «УКД» | «Перемещение товаров»
 doc_number (varchar)
 doc_date (date)
-related_realization_number (varchar, null)
+related_realization_number (varchar, null)   # только для УПД/УКД, если ДокументОснование указан
+related_realization_date (date, null)
 raw_1c_payload (jsonb)
 added_at (timestamptz)
 scanned_at_verification (timestamptz, null)
@@ -260,15 +262,39 @@ def doc_barcode_to_guid(barcode: str) -> uuid.UUID:
 - `secrets.choice` (криптостойкий RNG), retry на `IntegrityError` до 5 попыток. Коллизии на 16 цифрах ≈ 10⁻¹⁶.
 
 ### 5.3. OData-клиент с пробой типов
+
 ```python
+SELECT_FIELDS = {
+    "Document_ПеремещениеТоваров": ("Number", "Date"),
+    "Document_СчетФактураВыданный": (
+        "Number", "Date", "Корректировочный",
+        "ДокументОснование", "ДокументОснование_Key", "ДокументОснование_Type",
+    ),
+}
+
 KNOWN_DOC_TYPES = (
     "Document_ПеремещениеТоваров",
     "Document_СчетФактураВыданный",
 )   # порядок = частота в проде; пересортируется по статистике audit_log
 ```
-Последовательная проба, не параллельная (50-документный конверт перегрузит 1С). На 200 — возвращаем `(doc_type, payload)`. На 404 — следующий тип. На 401 — `OneCUnavailable("auth failed")` (отдельная диагностика). На `ConnectError`/`ReadTimeout` после всех попыток — `OneCUnavailable`. Если все вернули 404 — `DocumentNotFound`.
 
-Один общий `httpx.AsyncClient` на приложение, базовая авторизация, инициализируется в FastAPI lifespan.
+**Запрос:** `GET /{entity}(guid'{guid}')?$format=json&$select={fields}` — `$select` ограничивает payload только нужными полями. Для каждого entity свой набор; список зашит в `SELECT_FIELDS` в коде, не в env.
+
+**Последовательная проба, не параллельная** (50-документный конверт перегрузит 1С). На 200 — возвращаем `(doc_entity, payload)`. На 404 — следующий тип. На 401 — `OneCUnavailable("auth failed")` (отдельная диагностика, креды протухли). На `ConnectError`/`ReadTimeout` после всех попыток — `OneCUnavailable`. Если все вернули 404 — `DocumentNotFound`.
+
+Один общий `httpx.AsyncClient` на приложение с базовой авторизацией, инициализируется в FastAPI lifespan.
+
+**Нормализация payload → поля БД:**
+
+| `doc_entity` | `doc_kind` | Откуда |
+|---|---|---|
+| `Document_ПеремещениеТоваров` | `«Перемещение товаров»` | константа |
+| `Document_СчетФактураВыданный` & `Корректировочный=false` | `«УПД»` | флаг |
+| `Document_СчетФактураВыданный` & `Корректировочный=true` | `«УКД»` | флаг |
+
+**Связанная реализация (только для УПД/УКД):** если в ответе пришли `ДокументОснование_Key` и `ДокументОснование_Type` и тип начинается с `Document_РеализацияТоваровУслуг` (или другой `Реализация*`), делаем **второй** OData-запрос: `GET /{ДокументОснование_Type}(guid'{ДокументОснование_Key}')?$format=json&$select=Number,Date`. Полученные поля кладём в `related_realization_number` и `related_realization_date`. Если основания нет или это не реализация — оба null. На сетевую ошибку второго запроса не падаем — пишем варнинг в audit_log и продолжаем без данных реализации.
+
+**Нюанс:** EDMX явно не декларирует поля `ДокументОснование_Key`/`_Type`, но они приходят в ответе за счёт `OpenType="true"` на сущности. Точные имена и формат проверим на реальном JSON, когда пользователь пришлёт `tests/fixtures/odata/real_*.json`. Если имена окажутся другими — правим один словарь `SELECT_FIELDS` и одну функцию `extract_realization_ref(payload)`.
 
 ### 5.4. Сканер-логика на клиенте
 
