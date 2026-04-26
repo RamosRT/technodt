@@ -1,0 +1,38 @@
+# Секреты
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+
+# IDE / OS
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Сборка / артефакты
+dist/
+build/
+*.egg
+
+# Логи и временные файлы приложения
+logs/
+*.log
+tmp/
+
+# LibreOffice / pdf артефакты тестов
+*.pdf
+!docs/**/*.pdf
+!templates/**/*.pdf
