@@ -42,18 +42,24 @@ async def db_session(test_engine) -> AsyncIterator[AsyncSession]:
 
 @pytest_asyncio.fixture
 async def client(test_engine) -> AsyncIterator[AsyncClient]:
-    """ASGI client wired so app uses the test DB via dependency override."""
     factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
     async def override_session():
         async with factory() as s:
             yield s
 
+    from app.main import get_one_c_client
+    from app.services.odata import OneCClient
+    stub = OneCClient(base_url="http://1c.example/odata/standard.odata", user="u", password="p", timeout=5)
+
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_one_c_client] = lambda: stub
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+    await stub.aclose()
 
 
 @pytest.fixture
