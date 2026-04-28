@@ -15,6 +15,7 @@ __pycache__/
 htmlcov/
 venv/
 .venv/
+alembic/versions/__pycache__/
 
 # IDE / OS
 .idea/

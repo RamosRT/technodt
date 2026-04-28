@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash C:/Users/Ramos/.claude/statusline.sh)",
+      "Bash(echo \"---EXIT:$?---\")",
+      "Bash(bash --version)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git *)",
+      "Bash(python -m venv venv)",
+      "Bash(venv/Scripts/python -m pip install -U pip -q)",
+      "Bash(venv/Scripts/python -m pip install -e \".[dev]\" -q)",
+      "Bash(venv/Scripts/pip list *)",
+      "Bash(py -3.14 --version)",
+      "Read(//c/Python314//**)",
+      "Read(//c//**)",
+      "Bash(where python3.14)",
+      "Bash(where python *)",
+      "Bash(/c/Python314/python.exe --version)",
+      "Bash(cmd *)",
+      "Read(//c/Python314/**)",
+      "Read(//c/Users/Ramos/AppData/Local/Programs/Python//**)",
+      "PowerShell(Test-Path *)",
+      "PowerShell($py313 = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\"; & $py313 -m venv \"E:\\\\technodt\\\\venv\" 2>&1; Write-Output \"venv created\")",
+      "Bash(venv/Scripts/python -m pytest --version)",
+      "Bash(venv/Scripts/python -m fastapi --version)",
+      "Bash(venv/Scripts/python -c \"import fastapi, sqlalchemy, alembic; print\\('all imports ok'\\)\")"
+    ]
+  }
+}
