@@ -30,18 +30,12 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    envelope_status = postgresql.ENUM(
-        "draft", "sealed", "verified", "verified_with_discrepancy",
-        name="envelope_status",
-        create_type=True,
-    )
-    envelope_status.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "envelopes",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("number", sa.String(40), nullable=False, unique=True),
         sa.Column("barcode", sa.String(40), nullable=False, unique=True),
-        sa.Column("status", envelope_status, nullable=False, server_default="draft"),
+        sa.Column("status", postgresql.ENUM("draft", "sealed", "verified", "verified_with_discrepancy", name="envelope_status"), nullable=False, server_default="draft"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("sealed_at", sa.DateTime(timezone=True)),
         sa.Column("verified_at", sa.DateTime(timezone=True)),
