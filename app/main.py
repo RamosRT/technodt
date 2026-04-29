@@ -3,14 +3,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config import get_settings
+from app.deps import get_one_c_client
 from app.exceptions import AppError, app_error_handler
 from app.routers.api import health
+from app.routers.api import envelopes as envelopes_api
+from app.routers.api import dictionaries as dictionaries_api
+from app.routers.api import verify as verify_api
+from app.routers.api import admin as admin_api
 from app.services.odata import OneCClient
-
-
-def get_one_c_client() -> OneCClient:
-    """Dependency override target. Real client lives on app.state."""
-    raise RuntimeError("OneCClient not initialized — lifespan did not run")
 
 
 @asynccontextmanager
@@ -33,3 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Конверт-трек", lifespan=lifespan)
 app.add_exception_handler(AppError, app_error_handler)
 app.include_router(health.router)
+app.include_router(envelopes_api.router)
+app.include_router(dictionaries_api.router)
+app.include_router(verify_api.router)
+app.include_router(admin_api.router)

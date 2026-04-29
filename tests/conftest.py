@@ -19,7 +19,9 @@ def _test_db_url() -> str:
 
 @pytest_asyncio.fixture
 async def test_engine():
-    engine = create_async_engine(_test_db_url(), pool_pre_ping=True)
+    engine = create_async_engine(
+        _test_db_url(), pool_pre_ping=True, connect_args={"ssl": False}
+    )
     yield engine
     await engine.dispose()
 
@@ -48,7 +50,7 @@ async def client(test_engine) -> AsyncIterator[AsyncClient]:
         async with factory() as s:
             yield s
 
-    from app.main import get_one_c_client
+    from app.deps import get_one_c_client
     from app.services.odata import OneCClient
     stub = OneCClient(base_url="http://1c.example/odata/standard.odata", user="u", password="p", timeout=5)
 
@@ -67,4 +69,5 @@ def admin_token(monkeypatch):
     token = "test-admin-token-12345"
     monkeypatch.setenv("ADMIN_TOKEN", token)
     get_settings.cache_clear()
-    return token
+    yield token
+    get_settings.cache_clear()
