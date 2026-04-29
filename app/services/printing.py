@@ -1,4 +1,4 @@
-"""Print service: PDF (WeasyPrint) and ZPL label rendering."""
+"""Print service: PDF (Playwright/Chromium) and ZPL label rendering."""
 import asyncio
 import io
 import uuid
@@ -24,14 +24,26 @@ def _jinja_env() -> Environment:
 # ── thin wrappers (mocked in tests) ──────────────────────────────────────────
 
 
-def _html_to_pdf(html_str: str) -> bytes:
-    """Render HTML string to PDF bytes via WeasyPrint.
+def _render_pdf_sync(html_str: str) -> bytes:
+    """Render HTML to PDF via playwright sync API.
 
-    WeasyPrint requires GTK3 runtime DLLs on Windows.
-    Install from: https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer
+    Must run in a thread (via asyncio.to_thread) because sync_playwright
+    manages its own subprocess/thread internally and is immune to whatever
+    event loop policy uvicorn sets on Windows.
     """
-    from weasyprint import HTML  # lazy — avoid import-time GTK check
-    return HTML(string=html_str).write_pdf()
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page()
+        page.set_content(html_str, wait_until="networkidle")
+        pdf = page.pdf(prefer_css_page_size=True, print_background=True)
+        browser.close()
+        return pdf
+
+
+async def _html_to_pdf(html_str: str) -> bytes:
+    return await asyncio.to_thread(_render_pdf_sync, html_str)
 
 
 def generate_barcode_svg(barcode_value: str) -> str:
@@ -116,7 +128,7 @@ async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) ->
         **related,
     )
     html_str = _jinja_env().get_template("print/inventory.html").render(**ctx)
-    return await asyncio.to_thread(_html_to_pdf, html_str)
+    return await _html_to_pdf(html_str)
 
 
 async def render_label_pdf(session: AsyncSession, envelope_id: uuid.UUID) -> bytes:
@@ -128,7 +140,7 @@ async def render_label_pdf(session: AsyncSession, envelope_id: uuid.UUID) -> byt
         print_date=datetime.now(timezone.utc),
     )
     html_str = _jinja_env().get_template("print/label.html").render(**ctx)
-    return await asyncio.to_thread(_html_to_pdf, html_str)
+    return await _html_to_pdf(html_str)
 
 
 async def render_label_zpl_for_envelope(

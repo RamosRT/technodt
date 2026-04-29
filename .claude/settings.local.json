@@ -57,7 +57,13 @@
       "Bash(Start-Sleep 1)",
       "Bash(pkill -f uvicorn)",
       "Bash(pkill -f \"app.main\")",
-      "Bash(venv/Scripts/uvicorn app.main:app --host 127.0.0.1 --port 8080)"
+      "Bash(venv/Scripts/uvicorn app.main:app --host 127.0.0.1 --port 8080)",
+      "Bash(sc query *)",
+      "Bash(xargs grep *)",
+      "Bash(/e/technodt/venv/Scripts/python *)",
+      "Bash(/e/technodt/venv/Scripts/pip show *)",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/playwright install *)"
     ]
   }
 }
