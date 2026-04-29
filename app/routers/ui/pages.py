@@ -68,6 +68,8 @@ async def ui_create_envelope(
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
 
     envelope = await env_svc.create_envelope(session, operator=operator)
+    await session.commit()
+    envelope = await env_svc.get_by_id(session, envelope.id)
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
 
@@ -97,13 +99,19 @@ async def ui_add_document(
     try:
         envelope = await env_svc.get_by_id(session, envelope_id)
         await env_svc.add_document(session, envelope=envelope, barcode=barcode, one_c=one_c, operator=operator)
-        await session.refresh(envelope)
+        await session.commit()
+        await session.refresh(envelope, attribute_names=["documents"])
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    return templates.TemplateResponse(request, "partials/doc_table.html", {
+    branches = await dict_svc.list_branches(session, only_active=True)
+    signers = await dict_svc.list_signers(session, only_active=True)
+    return templates.TemplateResponse(request, "partials/envelope_card.html", {
         "envelope": envelope,
         "documents": envelope.documents,
+        "branches": branches,
+        "signers": signers,
+        "status_labels": STATUS_LABELS,
     })
 
 
@@ -122,13 +130,19 @@ async def ui_remove_document(
     try:
         envelope = await env_svc.get_by_id(session, envelope_id)
         await env_svc.remove_document(session, envelope=envelope, doc_id=doc_id, operator=operator)
-        await session.refresh(envelope)
+        await session.commit()
+        await session.refresh(envelope, attribute_names=["documents"])
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    return templates.TemplateResponse(request, "partials/doc_table.html", {
+    branches = await dict_svc.list_branches(session, only_active=True)
+    signers = await dict_svc.list_signers(session, only_active=True)
+    return templates.TemplateResponse(request, "partials/envelope_card.html", {
         "envelope": envelope,
         "documents": envelope.documents,
+        "branches": branches,
+        "signers": signers,
+        "status_labels": STATUS_LABELS,
     })
 
 
@@ -160,7 +174,8 @@ async def ui_seal_envelope(
             notes=notes or None,
             operator=operator,
         )
-        await session.refresh(envelope)
+        await session.commit()
+        envelope = await env_svc.get_by_id(session, envelope_id)
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
@@ -195,7 +210,8 @@ async def ui_verify_start_by_barcode(
     try:
         envelope = await env_svc.get_by_barcode(session, barcode)
         await verify_svc.start(session, envelope=envelope, operator=operator)
-        await session.refresh(envelope)
+        await session.commit()
+        envelope = await env_svc.get_by_id(session, envelope.id)
     except AppError as e:
         return templates.TemplateResponse(request, "partials/verify_prompt.html", {"error": e.detail})
 
@@ -221,7 +237,8 @@ async def ui_verify_scan(
 
     envelope = await env_svc.get_by_id(session, envelope_id)
     result = await verify_svc.scan(session, envelope=envelope, barcode=barcode, operator=operator)
-    await session.refresh(envelope)
+    await session.commit()
+    envelope = await env_svc.get_by_id(session, envelope_id)
 
     just_scanned_id = result.doc_id if result.matched else None
     for doc in envelope.documents:
@@ -249,12 +266,13 @@ async def ui_verify_finish(
     result = await verify_svc.finish(
         session, envelope=envelope, force=(force == "true"), operator=operator
     )
-    await session.refresh(envelope)
+    await session.commit()
+    envelope = await env_svc.get_by_id(session, envelope_id)
 
     return templates.TemplateResponse(request, "partials/verify_done.html", {
         "envelope": envelope,
         "documents": envelope.documents,
-        "missing_count": len(result.missing_doc_ids),
+        "missing_count": len(result.missing_docs),
     })
 
 

@@ -6,6 +6,7 @@
 const App = {
   mode: "idle",          // idle | register | verify
   envelopeId: null,      // current envelope UUID
+  envelopeBarcode: null, // current envelope barcode
   awaitingEnvBC: false,  // true while waiting for envelope barcode in verify
 };
 
@@ -53,6 +54,12 @@ function dispatch(barcode) {
     return;
   }
   if (App.mode === "register") {
+    // In register mode scanning the current envelope barcode means "start sealing".
+    if (App.envelopeBarcode && barcode === App.envelopeBarcode) {
+      openModal("seal-modal");
+      showToast("ШК конверта распознан — заполните поля и запечатайте", "info");
+      return;
+    }
     addDocToEnvelope(barcode);
   }
 }
@@ -61,7 +68,7 @@ function dispatch(barcode) {
 function addDocToEnvelope(barcode) {
   if (!App.envelopeId) return;
   htmx.ajax("POST", `/ui/envelopes/${App.envelopeId}/documents`, {
-    target: "#doc-area",
+    target: "#envelope-card",
     swap: "outerHTML",
     values: { barcode },
   });
@@ -88,6 +95,7 @@ function scanDocInVerify(barcode) {
 function setMode(mode) {
   App.mode = mode;
   App.envelopeId = null;
+  App.envelopeBarcode = null;
   App.awaitingEnvBC = (mode === "verify");
   updateModeBar();
 }
@@ -117,11 +125,13 @@ function updateModeBar() {
 }
 
 // Called by server-rendered HTML after envelope is created/loaded
-function onEnvelopeLoaded(id) {
+function onEnvelopeLoaded(id, barcode = null) {
   App.envelopeId = id;
+  App.envelopeBarcode = barcode;
   App.mode = "register";
   App.awaitingEnvBC = false;
   updateModeBar();
+  if (barcode) renderEnvelopeBarcode(barcode);
   ensureFocus();
 }
 
@@ -148,9 +158,11 @@ document.addEventListener("htmx:responseError", (e) => {
   let parsed;
   try { parsed = JSON.parse(msg); } catch (_) {}
   const detail = parsed?.detail;
+  // UI routes often return an HTML fragment for errors, not JSON.
+  const plain = (msg || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   const text = typeof detail === "string" ? detail
               : Array.isArray(detail) ? detail.map(d => d.msg || d).join("; ")
-              : `Ошибка сервера (${status})`;
+              : plain || `Ошибка сервера (${status})`;
   showToast(text, "error");
 });
 
@@ -192,4 +204,48 @@ function submitManualBarcode(formId) {
   if (!input || !input.value.trim()) return;
   dispatch(input.value.trim());
   input.value = "";
+}
+
+// ─── Envelope barcode rendering (Code128C SVG) ─────────────────
+const CODE128_PATTERNS = [
+  "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312",
+  "231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212",
+  "223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121",
+  "111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331",
+  "132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123",
+  "311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124",
+  "121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114",
+  "413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112",
+  "421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311",
+  "113141","114131","311141","411131","211412","211214","211232","2331112"
+];
+
+function renderEnvelopeBarcode(data) {
+  const svg = document.getElementById("env-bc-svg");
+  if (!svg || !/^\d+$/.test(data) || data.length % 2 !== 0) return;
+  const values = [105]; // Start C
+  for (let i = 0; i < data.length; i += 2) values.push(parseInt(data.slice(i, i + 2), 10));
+  let checksum = 105;
+  for (let i = 1; i < values.length; i++) checksum += values[i] * i;
+  values.push(checksum % 103, 106); // checksum + stop
+
+  const module = 2;
+  const height = 72;
+  const quiet = 10 * module;
+  let x = quiet;
+  let bars = "";
+  for (const code of values) {
+    const pattern = CODE128_PATTERNS[code];
+    if (!pattern) return;
+    for (let i = 0; i < pattern.length; i++) {
+      const w = parseInt(pattern[i], 10) * module;
+      if (i % 2 === 0) bars += `<rect x="${x}" y="0" width="${w}" height="${height}" fill="#111"/>`;
+      x += w;
+    }
+  }
+  x += quiet;
+  svg.setAttribute("viewBox", `0 0 ${x} ${height}`);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", String(height));
+  svg.innerHTML = bars;
 }
