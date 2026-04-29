@@ -1,0 +1,120 @@
+{# Rendered after envelope is created (register mode) #}
+<div id="envelope-card">
+<script>onEnvelopeLoaded('{{ envelope.id }}');</script>
+
+<div class="card">
+  <div class="card-title">
+    <span>{{ envelope.number }}</span>
+    <span class="badge badge-{{ envelope.status }}">{{ status_labels[envelope.status] }}</span>
+    <span class="ml-auto text-muted font-mono">{{ envelope.barcode }}</span>
+  </div>
+
+  <div class="env-meta">
+    <div class="env-meta-item"><label>Оператор</label><span>{{ envelope.created_by }}</span></div>
+    <div class="env-meta-item"><label>Создан</label><span>{{ envelope.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div>
+    <div class="env-meta-item"><label>Документов</label><span>{{ documents|length }}</span></div>
+  </div>
+
+  {% if envelope.status == 'draft' %}
+  <!-- manual barcode input for keyboard entry -->
+  <div class="flex gap-8 mt-8" style="margin-bottom:16px">
+    <input id="manual-bc" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
+    <button class="btn btn-primary" onclick="dispatchManual()">Добавить</button>
+  </div>
+  <script>
+  document.getElementById('manual-bc').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); dispatchManual(); }
+  });
+  function dispatchManual() {
+    const v = document.getElementById('manual-bc').value.trim();
+    if (v) { addDocToEnvelope(v); document.getElementById('manual-bc').value = ''; }
+  }
+  </script>
+  {% endif %}
+
+  <!-- Document list -->
+  <div id="doc-area">
+    {% include "partials/doc_table.html" %}
+  </div>
+
+  {% if envelope.status == 'draft' %}
+  <div class="mt-16 flex gap-8">
+    <button class="btn btn-primary"
+            onclick="document.getElementById('seal-modal').removeAttribute('hidden')"
+            {% if not documents %}disabled title="Нет документов"{% endif %}>
+      Запечатать
+    </button>
+    <span class="text-muted" style="align-self:center">Отсканируйте документы или введите ШК</span>
+  </div>
+  {% endif %}
+
+  {% if envelope.status == 'sealed' %}
+  <div class="print-actions">
+    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank">Опись (PDF)</a>
+    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Термоэтикетка (ZPL)</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Seal modal -->
+{% if envelope.status == 'draft' %}
+<div id="seal-modal" hidden>
+<div class="modal-overlay" onclick="if(event.target===this)this.parentElement.setAttribute('hidden','')">
+<div class="modal">
+  <div class="modal-title">Запечатать конверт</div>
+  <form hx-post="/ui/envelopes/{{ envelope.id }}/seal"
+        hx-target="#envelope-card" hx-swap="outerHTML">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-row">
+        <label>Отправитель (подписант)</label>
+        <select name="signer_sender_id" class="form-control" required>
+          <option value="">— выберите —</option>
+          {% for s in signers %}
+          <option value="{{ s.id }}">{{ s.last_name }} {{ s.first_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Получатель (подписант)</label>
+        <select name="signer_receiver_id" class="form-control" required>
+          <option value="">— выберите —</option>
+          {% for s in signers %}
+          <option value="{{ s.id }}">{{ s.last_name }} {{ s.first_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Филиал-отправитель</label>
+        <select name="origin_branch_id" class="form-control" required>
+          <option value="">— выберите —</option>
+          {% for b in branches %}
+          <option value="{{ b.id }}">{{ b.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Филиал-получатель</label>
+        <select name="destination_branch_id" class="form-control" required>
+          <option value="">— выберите —</option>
+          {% for b in branches %}
+          <option value="{{ b.id }}">{{ b.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Примечания</label>
+      <textarea name="notes" class="form-control" placeholder="необязательно"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost"
+              onclick="document.getElementById('seal-modal').setAttribute('hidden','')">Отмена</button>
+      <button type="submit" class="btn btn-primary">Запечатать</button>
+    </div>
+  </form>
+</div>
+</div>
+</div>
+{% endif %}
+
+</div>{# /envelope-card #}

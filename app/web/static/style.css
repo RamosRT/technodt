@@ -1,0 +1,415 @@
+/* Конверт-трек — corporate stylesheet (Technoavia brandbook) */
+
+/* ─── Font faces ───────────────────────────────────────────────── */
+@font-face { font-family: 'Roboto'; src: url('/static/fonts/Roboto-Light.ttf'); font-weight: 300; }
+@font-face { font-family: 'Roboto'; src: url('/static/fonts/Roboto-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'Roboto'; src: url('/static/fonts/Roboto-Medium.ttf'); font-weight: 500; }
+@font-face { font-family: 'Roboto'; src: url('/static/fonts/Roboto-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/static/fonts/RobotoCondensed-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'Roboto Condensed'; src: url('/static/fonts/RobotoCondensed-Bold.ttf'); font-weight: 700; }
+
+/* ─── Brand tokens ─────────────────────────────────────────────── */
+:root {
+  --ink:        #1b2848;
+  --blue:       #1d71b8;
+  --light-blue: #6ea9dc;
+  --red:        #e4032e;
+  --green:      #a5c715;
+  --bg:         #f0f4f8;
+  --surface:    #ffffff;
+  --border:     #d0dae6;
+  --text:       #1b2848;
+  --text-muted: #6b7a99;
+  --shadow:     0 2px 8px rgba(27,40,72,.12);
+  --radius:     6px;
+}
+
+/* ─── Reset / base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: 'Roboto', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─── Header ───────────────────────────────────────────────────── */
+.app-header {
+  background: var(--ink);
+  color: #fff;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+.app-header .logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.app-header .app-title {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: .5px;
+  flex: 1;
+}
+.app-header .operator-badge {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--light-blue);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-header .btn-link {
+  background: none;
+  border: none;
+  color: var(--light-blue);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.app-header .btn-link:hover { color: #fff; }
+
+/* ─── Mode bar ─────────────────────────────────────────────────── */
+.mode-bar {
+  background: var(--blue);
+  color: #fff;
+  padding: 0 24px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.mode-bar .mode-label { opacity: .75; }
+.mode-bar .mode-name {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  background: rgba(255,255,255,.15);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+}
+.mode-bar .mode-name.mode-register { background: rgba(165,199,21,.25); }
+.mode-bar .mode-name.mode-verify   { background: rgba(228,3,46,.2); }
+.mode-bar .scan-hint {
+  margin-left: auto;
+  opacity: .7;
+  font-size: 12px;
+}
+
+/* ─── Main layout ──────────────────────────────────────────────── */
+.main-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ─── Card ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-title .badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.badge-draft    { background: var(--light-blue); color: var(--ink); }
+.badge-sealed   { background: var(--blue); color: #fff; }
+.badge-verified { background: var(--green); color: #fff; }
+.badge-discrepancy { background: var(--red); color: #fff; }
+
+/* ─── Envelope meta grid ───────────────────────────────────────── */
+.env-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.env-meta-item label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 2px;
+}
+.env-meta-item span {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ─── Table ────────────────────────────────────────────────────── */
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 13px;
+}
+.doc-table th {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 12px;
+  letter-spacing: .3px;
+}
+.doc-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.doc-table tr:last-child td { border-bottom: none; }
+.doc-table tr:hover td { background: #f5f8fc; }
+.doc-table .col-num  { width: 36px; color: var(--text-muted); text-align: center; }
+.doc-table .col-action { width: 36px; text-align: center; }
+.doc-table .col-status { width: 100px; }
+
+/* verify status indicators */
+.scan-status-ok      { color: var(--green); font-weight: 700; }
+.scan-status-pending { color: var(--text-muted); }
+.scan-status-missing { color: var(--red); font-weight: 700; }
+
+/* ─── Buttons ──────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'Roboto', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter .15s, opacity .15s;
+  text-decoration: none;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:not(:disabled):hover { filter: brightness(1.1); }
+.btn:not(:disabled):active { filter: brightness(.95); }
+
+.btn-primary   { background: var(--blue); color: #fff; }
+.btn-dark      { background: var(--ink);  color: #fff; }
+.btn-success   { background: var(--green); color: #fff; }
+.btn-danger    { background: var(--red);   color: #fff; }
+.btn-ghost     { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-sm        { padding: 4px 10px; font-size: 12px; }
+.btn-icon      { padding: 5px; background: none; border: none; cursor: pointer; color: var(--red); }
+.btn-icon:hover { color: #a00; }
+
+/* ─── Forms ────────────────────────────────────────────────────── */
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.form-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.form-control {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  transition: border-color .15s;
+}
+.form-control:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(29,113,184,.15);
+}
+select.form-control { cursor: pointer; }
+textarea.form-control { resize: vertical; min-height: 60px; }
+
+/* ─── Mode selector ────────────────────────────────────────────── */
+.mode-selector {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.mode-card {
+  flex: 1;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 20px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .2s, background .2s;
+  background: var(--surface);
+}
+.mode-card:hover { border-color: var(--blue); background: #f0f7ff; }
+.mode-card.active { border-color: var(--blue); background: #e8f2fb; }
+.mode-card .mode-icon { font-size: 36px; display: block; margin-bottom: 10px; }
+.mode-card h3 { font-size: 16px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.mode-card p { font-size: 12px; color: var(--text-muted); }
+
+/* ─── Operator prompt ──────────────────────────────────────────── */
+.operator-prompt {
+  max-width: 420px;
+  margin: 60px auto 0;
+  text-align: center;
+}
+.operator-prompt h2 {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.operator-prompt p { color: var(--text-muted); margin-bottom: 20px; font-size: 13px; }
+
+/* ─── Alerts / banners ─────────────────────────────────────────── */
+.alert {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.alert-error   { background: #fde8ec; border-left: 4px solid var(--red);   color: #7a001a; }
+.alert-success { background: #eaf5d0; border-left: 4px solid var(--green); color: #3a4d00; }
+.alert-info    { background: #e3f0fb; border-left: 4px solid var(--blue);  color: #0d3b6b; }
+
+/* ─── Modal / overlay ──────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+}
+.modal {
+  background: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+  padding: 28px 32px;
+  width: 100%;
+  max-width: 520px;
+}
+.modal-title {
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 20px;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+/* ─── Admin panel ──────────────────────────────────────────────── */
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 640px) { .admin-grid { grid-template-columns: 1fr; } }
+
+.admin-list { list-style: none; }
+.admin-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.admin-list li:last-child { border-bottom: none; }
+
+/* ─── Scan animation ───────────────────────────────────────────── */
+@keyframes scan-flash {
+  0%   { background: rgba(165,199,21,.3); }
+  100% { background: transparent; }
+}
+.scan-flash { animation: scan-flash .5s ease-out; }
+
+/* ─── Spinner (htmx indicator) ─────────────────────────────────── */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-block; }
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Print enhancements ───────────────────────────────────────── */
+.print-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ─── Scanner input (visually hidden, always focused) ─────────── */
+#scanner-input {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+/* ─── Utility ──────────────────────────────────────────────────── */
+.flex        { display: flex; }
+.items-center{ align-items: center; }
+.gap-8       { gap: 8px; }
+.gap-12      { gap: 12px; }
+.mt-8        { margin-top: 8px; }
+.mt-16       { margin-top: 16px; }
+.ml-auto     { margin-left: auto; }
+.text-muted  { color: var(--text-muted); font-size: 12px; }
+.text-center { text-align: center; }
+.font-mono   { font-family: 'Roboto Condensed', monospace; letter-spacing: .5px; }
+.empty-state { text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 13px; }

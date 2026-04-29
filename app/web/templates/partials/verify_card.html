@@ -1,0 +1,59 @@
+{# Active verification session #}
+<div id="verify-card">
+<script>onVerifyEnvelopeLoaded('{{ envelope.id }}');</script>
+
+<div class="card">
+  <div class="card-title">
+    <span>{{ envelope.number }}</span>
+    <span class="badge badge-sealed">Запечатан</span>
+    <span class="ml-auto text-muted font-mono">{{ envelope.barcode }}</span>
+  </div>
+
+  <div class="env-meta">
+    <div class="env-meta-item"><label>Отправитель</label><span>{{ envelope.origin_branch_name or '—' }}</span></div>
+    <div class="env-meta-item"><label>Получатель</label><span>{{ envelope.destination_branch_name or '—' }}</span></div>
+    <div class="env-meta-item"><label>Документов</label><span>{{ documents|length }}</span></div>
+    <div class="env-meta-item"><label>Отсканировано</label><span>{{ scanned_count }}</span></div>
+  </div>
+
+  <!-- Manual scan input -->
+  <div class="flex gap-8" style="margin-bottom:16px">
+    <input id="verify-manual" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
+    <button class="btn btn-primary btn-sm" onclick="verifyManual()">Сканировать</button>
+  </div>
+  <script>
+  document.getElementById('verify-manual').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); verifyManual(); }
+  });
+  function verifyManual() {
+    const v = document.getElementById('verify-manual').value.trim();
+    if (v) { scanDocInVerify(v); document.getElementById('verify-manual').value = ''; }
+  }
+  </script>
+
+  <div id="verify-area">
+    {% include "partials/verify_table.html" %}
+  </div>
+
+  <div class="mt-16 flex gap-8">
+    {% if all_scanned %}
+    <form hx-post="/ui/envelopes/{{ envelope.id }}/verify/finish"
+          hx-target="#verify-card" hx-swap="outerHTML">
+      <input type="hidden" name="force" value="false">
+      <button type="submit" class="btn btn-success">✓ Завершить — всё в порядке</button>
+    </form>
+    {% else %}
+    <span class="text-muted" style="align-self:center">
+      Не отсканировано: {{ documents|length - scanned_count }} из {{ documents|length }}
+    </span>
+    <form hx-post="/ui/envelopes/{{ envelope.id }}/verify/finish"
+          hx-target="#verify-card" hx-swap="outerHTML"
+          hx-confirm="Завершить с расхождениями?"
+          style="margin-left:auto">
+      <input type="hidden" name="force" value="true">
+      <button type="submit" class="btn btn-danger">Завершить с расхождением</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+</div>

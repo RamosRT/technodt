@@ -1,0 +1,47 @@
+{# Final result after verify/finish #}
+<div id="verify-card">
+<div class="card">
+  <div class="card-title">
+    <span>{{ envelope.number }}</span>
+    {% if envelope.status == 'verified' %}
+    <span class="badge badge-verified">Верифицирован</span>
+    {% else %}
+    <span class="badge badge-discrepancy">Расхождение</span>
+    {% endif %}
+  </div>
+
+  {% if envelope.status == 'verified' %}
+  <div class="alert alert-success">✓ Все {{ documents|length }} документов получены. Верификация завершена.</div>
+  {% else %}
+  <div class="alert alert-error">
+    ⚠ Расхождение: {{ missing_count }} из {{ documents|length }} документов не получены.
+  </div>
+  <table class="doc-table" style="margin-top:12px">
+    <thead>
+      <tr><th>#</th><th>Вид документа</th><th>Номер</th><th>Дата</th><th class="col-status">Статус</th></tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr>
+        <td class="col-num text-muted">{{ loop.index }}</td>
+        <td>{{ doc.doc_kind }}</td>
+        <td class="font-mono">{{ doc.doc_number }}</td>
+        <td>{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
+        <td>
+          {% if doc.scanned_at_verification %}
+          <span class="scan-status-ok">✓ Получен</span>
+          {% else %}
+          <span class="scan-status-missing">✗ Не получен</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="mt-16">
+    <button class="btn btn-ghost" onclick="location.reload()">Закрыть</button>
+  </div>
+</div>
+</div>

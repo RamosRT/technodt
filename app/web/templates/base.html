@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Конверт-трек</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body hx-boost="false">
+
+<input id="scanner-input" type="text" autocomplete="off" tabindex="-1" aria-hidden="true">
+
+<!-- Header -->
+<header class="app-header">
+  <img class="logo" src="/static/icon.png" alt="">
+  <span class="app-title">Конверт-трек</span>
+  {% if operator %}
+  <span class="operator-badge">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+    {{ operator }}
+    <button class="btn-link" hx-post="/ui/operator/clear" hx-target="body" hx-swap="outerHTML">Выйти</button>
+  </span>
+  {% endif %}
+</header>
+
+<!-- Mode bar -->
+<div class="mode-bar">
+  <span class="mode-label">Режим:</span>
+  <span id="mode-bar-name" class="mode-name">Ожидание</span>
+  <span id="mode-bar-hint" class="scan-hint"></span>
+</div>
+
+<!-- Page content -->
+<main class="main-content" id="main-area">
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

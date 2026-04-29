@@ -1,0 +1,104 @@
+{# Admin / dictionaries panel #}
+<div id="admin-panel">
+<div class="admin-grid">
+
+  <!-- Branches -->
+  <div class="card">
+    <div class="card-title">Филиалы</div>
+    <ul class="admin-list" id="branch-list">
+      {% for b in branches %}
+      <li id="branch-{{ b.id }}">
+        <span>{{ b.name }}</span>
+        <div class="flex gap-8">
+          <button class="btn btn-sm btn-ghost"
+                  onclick="editBranch('{{ b.id }}', '{{ b.name | replace("'", "\\'") }}')">
+            Изм.
+          </button>
+        </div>
+      </li>
+      {% else %}
+      <li><span class="text-muted">Пусто</span></li>
+      {% endfor %}
+    </ul>
+    <div style="margin-top:12px">
+      <form hx-post="/ui/admin/branches" hx-target="#admin-panel" hx-swap="outerHTML" class="flex gap-8">
+        <input name="name" class="form-control" placeholder="Название филиала" required>
+        <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Signers -->
+  <div class="card">
+    <div class="card-title">Подписанты</div>
+    <ul class="admin-list" id="signer-list">
+      {% for s in signers %}
+      <li id="signer-{{ s.id }}">
+        <span>{{ s.last_name }} {{ s.first_name }}</span>
+        <button class="btn btn-sm btn-ghost"
+                onclick="editSigner('{{ s.id }}', '{{ s.last_name | replace("'", "\\'") }}', '{{ s.first_name | replace("'", "\\'") }}')">
+          Изм.
+        </button>
+      </li>
+      {% else %}
+      <li><span class="text-muted">Пусто</span></li>
+      {% endfor %}
+    </ul>
+    <div style="margin-top:12px">
+      <form hx-post="/ui/admin/signers" hx-target="#admin-panel" hx-swap="outerHTML">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input name="last_name"  class="form-control" placeholder="Фамилия" required>
+          <input name="first_name" class="form-control" placeholder="Имя"     required>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<!-- Edit modals (inline) -->
+<div id="edit-modal" hidden>
+<div class="modal-overlay" onclick="if(event.target===this)closeModal('edit-modal')">
+<div class="modal">
+  <div class="modal-title" id="edit-modal-title">Редактировать</div>
+  <div id="edit-modal-body"></div>
+</div>
+</div>
+</div>
+
+<script>
+function editBranch(id, name) {
+  document.getElementById('edit-modal-title').textContent = 'Изменить филиал';
+  document.getElementById('edit-modal-body').innerHTML = `
+    <form hx-patch="/ui/admin/branches/${id}" hx-target="#admin-panel" hx-swap="outerHTML"
+          onsubmit="closeModal('edit-modal')">
+      <div class="form-row"><label>Название</label>
+        <input class="form-control" name="name" value="${name.replace(/"/g,'&quot;')}" required autofocus></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('edit-modal')">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>`;
+  openModal('edit-modal');
+}
+function editSigner(id, ln, fn) {
+  document.getElementById('edit-modal-title').textContent = 'Изменить подписанта';
+  document.getElementById('edit-modal-body').innerHTML = `
+    <form hx-patch="/ui/admin/signers/${id}" hx-target="#admin-panel" hx-swap="outerHTML"
+          onsubmit="closeModal('edit-modal')">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div class="form-row"><label>Фамилия</label>
+          <input class="form-control" name="last_name" value="${ln.replace(/"/g,'&quot;')}" required autofocus></div>
+        <div class="form-row"><label>Имя</label>
+          <input class="form-control" name="first_name" value="${fn.replace(/"/g,'&quot;')}" required></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('edit-modal')">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>`;
+  openModal('edit-modal');
+}
+</script>
+</div>

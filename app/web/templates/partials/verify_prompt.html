@@ -1,0 +1,22 @@
+{# Shown when entering verify mode #}
+<div class="card">
+  <div class="card-title">Верификация конверта</div>
+  <p style="color:var(--text-muted);margin-bottom:20px">
+    Отсканируйте штрихкод конверта или введите его вручную:
+  </p>
+  <div class="flex gap-8">
+    <input id="verify-bc-input" class="form-control" placeholder="Штрихкод конверта"
+           autocomplete="off" autofocus>
+    <button class="btn btn-primary" onclick="startVerifyManual()">Открыть</button>
+  </div>
+  <script>
+  document.getElementById('verify-bc-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startVerifyManual();
+  });
+  function startVerifyManual() {
+    const bc = document.getElementById('verify-bc-input').value.trim();
+    if (!bc) return;
+    openVerifyEnvelope(bc);
+  }
+  </script>
+</div>

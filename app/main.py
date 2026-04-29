@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.deps import get_one_c_client
@@ -10,7 +12,10 @@ from app.routers.api import envelopes as envelopes_api
 from app.routers.api import dictionaries as dictionaries_api
 from app.routers.api import verify as verify_api
 from app.routers.api import admin as admin_api
+from app.routers.ui import pages as ui_pages
 from app.services.odata import OneCClient
+
+_STATIC_DIR = Path(__file__).parent / "web" / "static"
 
 
 @asynccontextmanager
@@ -32,8 +37,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Конверт-трек", lifespan=lifespan)
 app.add_exception_handler(AppError, app_error_handler)
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(health.router)
 app.include_router(envelopes_api.router)
 app.include_router(dictionaries_api.router)
 app.include_router(verify_api.router)
 app.include_router(admin_api.router)
+app.include_router(ui_pages.router)
