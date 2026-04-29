@@ -56,7 +56,8 @@
   {% if env_status == 'sealed' %}
   <div class="print-actions">
     <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank">Опись (PDF)</a>
-    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Термоэтикетка (ZPL)</a>
+    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Этикетка (PDF)</a>
+    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank">Этикетка (ZPL)</a>
   </div>
   {% endif %}
 </div>

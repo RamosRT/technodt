@@ -1,6 +1,5 @@
 import uuid
-
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_operator
@@ -9,6 +8,7 @@ from app.deps import get_one_c_client
 from app.schemas.document import DocumentAddRequest, DocumentOut
 from app.schemas.envelope import EnvelopeOut, SealRequest
 from app.services import envelopes as svc
+from app.services import printing
 from app.services.odata import OneCClient
 
 router = APIRouter(prefix="/api/envelopes", tags=["envelopes"])
@@ -80,3 +80,44 @@ async def seal_envelope(
     )
     await session.commit()
     return await svc.get_by_id(session, sealed.id)
+
+
+@router.get("/{envelope_id}/print/inventory")
+async def print_inventory(
+    envelope_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    pdf = await printing.render_inventory_pdf(session, envelope_id)
+    envelope = await svc.get_by_id(session, envelope_id)
+    filename = f"inventory_{envelope.number.replace('ТА-', 'TA-')}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{envelope_id}/print/label")
+async def print_label(
+    envelope_id: uuid.UUID,
+    format: str = Query(default="pdf", pattern="^(pdf|zpl)$"),
+    dpi: int = Query(default=200, ge=200, le=300),
+    session: AsyncSession = Depends(get_session),
+):
+    envelope = await svc.get_by_id(session, envelope_id)
+    filename_base = f"label_{envelope.number.replace('ТА-', 'TA-')}"
+
+    if format == "zpl":
+        zpl = printing.render_label_zpl(envelope, dpi=dpi)
+        return Response(
+            content=zpl.encode("utf-8"),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.zpl"'},
+        )
+
+    pdf = await printing.render_label_pdf(session, envelope_id)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+    )

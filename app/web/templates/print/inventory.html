@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+{#
+  ОПИСЬ ВЛОЖЕНИЙ — A4 PDF (WeasyPrint)
+
+  Контекст шаблона (передаётся из print service):
+  ─────────────────────────────────────────────
+  envelope            EnvelopeOut
+    .id               UUID
+    .number           str          "ТА-12345"
+    .barcode          str          числовая строка для Code128
+    .status           str          "sealed" | "verified" | "verified_with_discrepancy"
+    .created_at       datetime(tz)
+    .sealed_at        datetime(tz) | None
+    .verified_at      datetime(tz) | None
+    .created_by       str          имя оператора
+    .verified_by      str | None
+    .notes            str | None
+    .documents        list[DocumentOut]   — см. ниже
+
+  origin_branch       BranchOut | None
+    .name             str          "Головной офис"
+
+  destination_branch  BranchOut | None
+    .name             str          "Филиал Север"
+
+  signer_sender       SignerOut | None
+    .last_name        str
+    .first_name       str
+
+  signer_receiver     SignerOut | None
+    .last_name        str
+    .first_name       str
+
+  documents           list[DocumentOut]  — копия envelope.documents для удобства
+    [i].doc_number    str          "МТ-0001234"
+    [i].doc_date      date
+    [i].doc_kind      str          человекочитаемый тип (передаётся уже переведённым)
+    [i].doc_barcode   str
+    [i].related_realization_number  str | None
+    [i].related_realization_date    date | None
+
+  print_date          datetime     момент генерации PDF (now())
+  print_date          datetime     момент генерации PDF (now())
+
+  Примечания:
+  • doc_kind уже человекочитаем: "УПД", "УКД", "Перемещение товаров"
+  • barcode_svg — SVG Code128 конверта, генерируется сервером (python-barcode),
+    передаётся как строка; фильтр | safe обязателен
+  • Шаблон — один экземпляр, подписывается и вкладывается в конверт
+#}
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <title>Опись вложений {{ envelope.number }}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 15mm 15mm 20mm 20mm;
+    }
+
+    body {
+      font-family: "DejaVu Sans", Arial, sans-serif;
+      font-size: 9pt;
+      color: #000;
+    }
+
+    /* ── Шапка ─────────────────────────────────────────── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6mm;
+      border-bottom: 1px solid #000;
+      padding-bottom: 4mm;
+    }
+
+    .header-title h1 {
+      font-size: 13pt;
+      font-weight: bold;
+      margin: 0 0 2mm;
+    }
+
+    .header-title p {
+      margin: 1mm 0;
+      font-size: 8.5pt;
+    }
+
+    /* Штрихкод конверта в правом верхнем углу */
+    .header-barcode {
+      text-align: center;
+    }
+
+    .header-barcode svg {
+      display: block;
+      width: 45mm;
+      height: 14mm;
+    }
+
+    .header-barcode .bc-number {
+      font-size: 7pt;
+      margin-top: 1mm;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Маршрут ────────────────────────────────────────── */
+    .route-block {
+      display: flex;
+      gap: 5mm;
+      margin-bottom: 5mm;
+    }
+
+    .route-cell {
+      flex: 1;
+      border: 1px solid #888;
+      padding: 2mm 3mm;
+      border-radius: 1mm;
+    }
+
+    .route-cell .cell-label {
+      font-size: 7.5pt;
+      color: #555;
+      margin-bottom: 1mm;
+    }
+
+    .route-cell .cell-value {
+      font-size: 9pt;
+      font-weight: bold;
+    }
+
+    /* ── Таблица документов ─────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6mm;
+    }
+
+    thead th {
+      background: #f0f0f0;
+      border: 1px solid #bbb;
+      padding: 2mm 2.5mm;
+      font-size: 8pt;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    tbody td {
+      border: 1px solid #ccc;
+      padding: 1.5mm 2.5mm;
+      font-size: 8.5pt;
+      vertical-align: middle;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #fafafa;
+    }
+
+    .col-num   { width: 8mm;  text-align: center; }
+    .col-kind  { width: 38mm; }
+    .col-docno { width: 30mm; text-align: center; }
+    .col-date  { width: 22mm; text-align: center; }
+    .col-rel   { width: 42mm; font-size: 7.5pt; color: #333; }
+    .col-bc    { font-size: 7pt; font-family: monospace; color: #444; }
+
+    /* ── Итого ──────────────────────────────────────────── */
+    .totals {
+      font-size: 9pt;
+      margin-bottom: 8mm;
+    }
+
+    .totals strong {
+      font-weight: bold;
+    }
+
+    /* ── Подписи ────────────────────────────────────────── */
+    .signatures {
+      display: flex;
+      gap: 10mm;
+      margin-top: 8mm;
+    }
+
+    .sig-block {
+      flex: 1;
+    }
+
+    .sig-block .sig-role {
+      font-size: 8pt;
+      color: #555;
+      margin-bottom: 1mm;
+    }
+
+    .sig-block .sig-name {
+      font-size: 9pt;
+      font-weight: bold;
+      border-bottom: 1px solid #000;
+      padding-bottom: 1mm;
+      min-width: 50mm;
+      display: inline-block;
+    }
+
+    .sig-block .sig-line {
+      margin-top: 8mm;
+      border-top: 1px solid #aaa;
+      padding-top: 1mm;
+      font-size: 7.5pt;
+      color: #777;
+    }
+
+    /* ── Подвал ─────────────────────────────────────────── */
+    .footer {
+      position: fixed;
+      bottom: 5mm;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 7pt;
+      color: #888;
+      border-top: 0.5pt solid #ccc;
+      padding-top: 2mm;
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">
+    <h1>Опись вложений</h1>
+    <p>Конверт <strong>{{ envelope.number }}</strong></p>
+    <p>Дата запечатывания:
+      {% if envelope.sealed_at %}
+        {{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') }}
+      {% else %}—{% endif %}
+    </p>
+    <p>Оператор: {{ envelope.created_by }}</p>
+  </div>
+  <div class="header-barcode">
+    {# SVG штрихкода подставляется сервисом как строка в переменную barcode_svg #}
+    {{ barcode_svg | safe }}
+    <div class="bc-number">{{ envelope.barcode }}</div>
+  </div>
+</div>
+
+<div class="route-block">
+  <div class="route-cell">
+    <div class="cell-label">Филиал-отправитель</div>
+    <div class="cell-value">
+      {{ origin_branch.name if origin_branch else '—' }}
+    </div>
+  </div>
+  <div class="route-cell">
+    <div class="cell-label">Филиал-получатель</div>
+    <div class="cell-value">
+      {{ destination_branch.name if destination_branch else '—' }}
+    </div>
+  </div>
+  {% if envelope.notes %}
+  <div class="route-cell">
+    <div class="cell-label">Примечания</div>
+    <div class="cell-value">{{ envelope.notes }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th class="col-num">№</th>
+      <th class="col-kind">Тип документа</th>
+      <th class="col-docno">Номер</th>
+      <th class="col-date">Дата</th>
+      <th class="col-rel">Связанная реализация</th>
+      <th class="col-bc">Штрихкод</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc in documents %}
+    <tr>
+      <td class="col-num">{{ loop.index }}</td>
+      <td class="col-kind">{{ doc.doc_kind }}</td>
+      <td class="col-docno">{{ doc.doc_number }}</td>
+      <td class="col-date">{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
+      <td class="col-rel">
+        {% if doc.related_realization_number %}
+          {{ doc.related_realization_number }}
+          {% if doc.related_realization_date %}
+            от {{ doc.related_realization_date.strftime('%d.%m.%Y') }}
+          {% endif %}
+        {% else %}—{% endif %}
+      </td>
+      <td class="col-bc">{{ doc.doc_barcode }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="totals">
+  Итого документов: <strong>{{ documents | length }}</strong>
+</div>
+
+<div class="signatures">
+  <div class="sig-block">
+    <div class="sig-role">Сдал (отправитель)</div>
+    <div class="sig-name">
+      {{ signer_sender.last_name ~ ' ' ~ signer_sender.first_name if signer_sender else '___________________' }}
+    </div>
+    <div class="sig-line">подпись / дата</div>
+  </div>
+  <div class="sig-block">
+    <div class="sig-role">Принял (получатель)</div>
+    <div class="sig-name">
+      {{ signer_receiver.last_name ~ ' ' ~ signer_receiver.first_name if signer_receiver else '___________________' }}
+    </div>
+    <div class="sig-line">подпись / дата</div>
+  </div>
+</div>
+
+<div class="footer">
+  Конверт-трек · Сформировано {{ print_date.strftime('%d.%m.%Y %H:%M') }}
+</div>
+
+</body>
+</html>
