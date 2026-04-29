@@ -2,8 +2,8 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Cookie, Depends, Form, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,31 +36,21 @@ def _operator(operator_name: str | None = Cookie(default=None)) -> str | None:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, operator: str | None = Depends(_operator)):
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "operator": operator}
-    )
+    return templates.TemplateResponse(request, "index.html", {"operator": operator})
 
 
 # ─── Operator ────────────────────────────────────────────────────────────────
 
 @router.post("/ui/operator", response_class=HTMLResponse)
-async def set_operator(
-    request: Request,
-    operator_name: str = Form(...),
-):
-    response = templates.TemplateResponse(
-        "index.html",
-        {"request": request, "operator": operator_name},
-    )
+async def set_operator(request: Request, operator_name: str = Form(...)):
+    response = templates.TemplateResponse(request, "index.html", {"operator": operator_name})
     response.set_cookie("operator_name", operator_name, httponly=True, samesite="lax")
     return response
 
 
 @router.post("/ui/operator/clear", response_class=HTMLResponse)
 async def clear_operator(request: Request):
-    response = templates.TemplateResponse(
-        "index.html", {"request": request, "operator": None}
-    )
+    response = templates.TemplateResponse(request, "index.html", {"operator": None})
     response.delete_cookie("operator_name")
     return response
 
@@ -77,21 +67,16 @@ async def ui_create_envelope(
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
 
     envelope = await env_svc.create_envelope(session, operator=operator)
-
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
 
-    return templates.TemplateResponse(
-        "partials/envelope_card.html",
-        {
-            "request": request,
-            "envelope": envelope,
-            "documents": envelope.documents,
-            "branches": branches,
-            "signers": signers,
-            "status_labels": STATUS_LABELS,
-        },
-    )
+    return templates.TemplateResponse(request, "partials/envelope_card.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+        "branches": branches,
+        "signers": signers,
+        "status_labels": STATUS_LABELS,
+    })
 
 
 # ─── Add document ─────────────────────────────────────────────────────────────
@@ -114,10 +99,10 @@ async def ui_add_document(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    return templates.TemplateResponse(
-        "partials/doc_table.html",
-        {"request": request, "envelope": envelope, "documents": envelope.documents},
-    )
+    return templates.TemplateResponse(request, "partials/doc_table.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+    })
 
 
 # ─── Remove document ──────────────────────────────────────────────────────────
@@ -139,10 +124,10 @@ async def ui_remove_document(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    return templates.TemplateResponse(
-        "partials/doc_table.html",
-        {"request": request, "envelope": envelope, "documents": envelope.documents},
-    )
+    return templates.TemplateResponse(request, "partials/doc_table.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+    })
 
 
 # ─── Seal ─────────────────────────────────────────────────────────────────────
@@ -180,24 +165,20 @@ async def ui_seal_envelope(
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
 
-    return templates.TemplateResponse(
-        "partials/envelope_card.html",
-        {
-            "request": request,
-            "envelope": envelope,
-            "documents": envelope.documents,
-            "branches": branches,
-            "signers": signers,
-            "status_labels": STATUS_LABELS,
-        },
-    )
+    return templates.TemplateResponse(request, "partials/envelope_card.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+        "branches": branches,
+        "signers": signers,
+        "status_labels": STATUS_LABELS,
+    })
 
 
 # ─── Verify mode ──────────────────────────────────────────────────────────────
 
 @router.get("/ui/verify", response_class=HTMLResponse)
 async def ui_verify_prompt(request: Request):
-    return templates.TemplateResponse("partials/verify_prompt.html", {"request": request})
+    return templates.TemplateResponse(request, "partials/verify_prompt.html", {})
 
 
 @router.get("/ui/verify/start-by-barcode", response_class=HTMLResponse)
@@ -214,22 +195,15 @@ async def ui_verify_start_by_barcode(
         await verify_svc.start(session, envelope=envelope, operator=operator)
         await session.refresh(envelope)
     except AppError as e:
-        return templates.TemplateResponse(
-            "partials/verify_prompt.html",
-            {"request": request, "error": e.detail},
-        )
+        return templates.TemplateResponse(request, "partials/verify_prompt.html", {"error": e.detail})
 
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
-    return templates.TemplateResponse(
-        "partials/verify_card.html",
-        {
-            "request": request,
-            "envelope": envelope,
-            "documents": envelope.documents,
-            "scanned_count": scanned,
-            "all_scanned": scanned == len(envelope.documents),
-        },
-    )
+    return templates.TemplateResponse(request, "partials/verify_card.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+        "scanned_count": scanned,
+        "all_scanned": scanned == len(envelope.documents),
+    })
 
 
 @router.post("/ui/envelopes/{envelope_id}/verify/scan", response_class=HTMLResponse)
@@ -247,16 +221,15 @@ async def ui_verify_scan(
     result = await verify_svc.scan(session, envelope=envelope, barcode=barcode, operator=operator)
     await session.refresh(envelope)
 
-    # Mark just-scanned doc for flash animation
     just_scanned_id = result.doc_id if result.matched else None
     for doc in envelope.documents:
         doc.just_scanned = (doc.id == just_scanned_id)
 
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
-    return templates.TemplateResponse(
-        "partials/verify_table.html",
-        {"request": request, "documents": envelope.documents, "scanned_count": scanned},
-    )
+    return templates.TemplateResponse(request, "partials/verify_table.html", {
+        "documents": envelope.documents,
+        "scanned_count": scanned,
+    })
 
 
 @router.post("/ui/envelopes/{envelope_id}/verify/finish", response_class=HTMLResponse)
@@ -276,30 +249,25 @@ async def ui_verify_finish(
     )
     await session.refresh(envelope)
 
-    missing_count = len(result.missing_doc_ids)
-    return templates.TemplateResponse(
-        "partials/verify_done.html",
-        {
-            "request": request,
-            "envelope": envelope,
-            "documents": envelope.documents,
-            "missing_count": missing_count,
-        },
-    )
+    return templates.TemplateResponse(request, "partials/verify_done.html", {
+        "envelope": envelope,
+        "documents": envelope.documents,
+        "missing_count": len(result.missing_doc_ids),
+    })
 
 
 # ─── Admin / dictionaries ─────────────────────────────────────────────────────
 
-async def _admin_context(request: Request, session: AsyncSession):
-    branches = await dict_svc.list_branches(session, only_active=False)
-    signers = await dict_svc.list_signers(session, only_active=False)
-    return {"request": request, "branches": branches, "signers": signers}
+async def _admin_ctx(session: AsyncSession) -> dict:
+    return {
+        "branches": await dict_svc.list_branches(session, only_active=False),
+        "signers": await dict_svc.list_signers(session, only_active=False),
+    }
 
 
 @router.get("/ui/admin", response_class=HTMLResponse)
 async def ui_admin(request: Request, session: AsyncSession = Depends(get_session)):
-    ctx = await _admin_context(request, session)
-    return templates.TemplateResponse("partials/admin.html", ctx)
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
 @router.post("/ui/admin/branches", response_class=HTMLResponse)
@@ -310,8 +278,7 @@ async def ui_create_branch(
     operator: str | None = Depends(_operator),
 ):
     await dict_svc.create_branch(session, name=name, operator=operator or "ui")
-    ctx = await _admin_context(request, session)
-    return templates.TemplateResponse("partials/admin.html", ctx)
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
 @router.patch("/ui/admin/branches/{branch_id}", response_class=HTMLResponse)
@@ -323,8 +290,7 @@ async def ui_patch_branch(
     operator: str | None = Depends(_operator),
 ):
     await dict_svc.patch_branch(session, branch_id=branch_id, name=name, is_active=None, operator=operator or "ui")
-    ctx = await _admin_context(request, session)
-    return templates.TemplateResponse("partials/admin.html", ctx)
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
 @router.post("/ui/admin/signers", response_class=HTMLResponse)
@@ -338,8 +304,7 @@ async def ui_create_signer(
     await dict_svc.create_signer(
         session, last_name=last_name, first_name=first_name, operator=operator or "ui"
     )
-    ctx = await _admin_context(request, session)
-    return templates.TemplateResponse("partials/admin.html", ctx)
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
 @router.patch("/ui/admin/signers/{signer_id}", response_class=HTMLResponse)
@@ -352,7 +317,7 @@ async def ui_patch_signer(
     operator: str | None = Depends(_operator),
 ):
     await dict_svc.patch_signer(
-        session, signer_id=signer_id, last_name=last_name, first_name=first_name, is_active=None, operator=operator or "ui"
+        session, signer_id=signer_id, last_name=last_name, first_name=first_name,
+        is_active=None, operator=operator or "ui"
     )
-    ctx = await _admin_context(request, session)
-    return templates.TemplateResponse("partials/admin.html", ctx)
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
