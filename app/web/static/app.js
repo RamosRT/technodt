@@ -11,11 +11,24 @@ const App = {
 
 const SCANNER = document.getElementById("scanner-input");
 
-// Keep the hidden input focused at all times
-document.addEventListener("click", () => SCANNER && SCANNER.focus());
-document.addEventListener("keydown", () => SCANNER && SCANNER.focus());
+// Returns true when el is a visible user-facing input (not the hidden scanner itself)
+function isUserInput(el) {
+  if (!el || el === SCANNER) return false;
+  const tag = el.tagName;
+  return (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && el.type !== "hidden";
+}
+
+// Steal focus back to scanner only when a real user-input is NOT active
+document.addEventListener("click", (e) => {
+  if (SCANNER && !isUserInput(e.target)) SCANNER.focus();
+});
+document.addEventListener("keydown", () => {
+  if (SCANNER && !isUserInput(document.activeElement)) SCANNER.focus();
+});
 
 function ensureFocus() {
+  if (App.mode === "idle") return;          // login screen — don't interfere
+  if (isUserInput(document.activeElement)) return; // user is in a form field
   if (SCANNER && document.activeElement !== SCANNER) SCANNER.focus();
 }
 setInterval(ensureFocus, 500);
@@ -130,10 +143,15 @@ function flashRow(rowId) {
 
 // ─── HTMX event hooks ───────────────────────────────────────────
 document.addEventListener("htmx:responseError", (e) => {
+  const status = e.detail.xhr.status;
   const msg = e.detail.xhr.responseText;
   let parsed;
   try { parsed = JSON.parse(msg); } catch (_) {}
-  showToast(parsed?.detail || "Ошибка сервера", "error");
+  const detail = parsed?.detail;
+  const text = typeof detail === "string" ? detail
+              : Array.isArray(detail) ? detail.map(d => d.msg || d).join("; ")
+              : `Ошибка сервера (${status})`;
+  showToast(text, "error");
 });
 
 // ─── Toast notifications ────────────────────────────────────────

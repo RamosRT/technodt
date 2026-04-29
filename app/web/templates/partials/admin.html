@@ -11,8 +11,16 @@
         <span>{{ b.name }}</span>
         <div class="flex gap-8">
           <button class="btn btn-sm btn-ghost"
-                  onclick="editBranch('{{ b.id }}', '{{ b.name | replace("'", "\\'") }}')">
+                  data-id="{{ b.id }}"
+                  data-name="{{ b.name }}"
+                  onclick="editBranchFromBtn(this)">
             Изм.
+          </button>
+          <button class="btn btn-sm btn-danger"
+                  hx-post="/ui/admin/branches/{{ b.id }}/deactivate"
+                  hx-confirm="Деактивировать филиал?"
+                  hx-target="#admin-panel" hx-swap="outerHTML">
+            Удал.
           </button>
         </div>
       </li>
@@ -35,10 +43,21 @@
       {% for s in signers %}
       <li id="signer-{{ s.id }}">
         <span>{{ s.last_name }} {{ s.first_name }}</span>
-        <button class="btn btn-sm btn-ghost"
-                onclick="editSigner('{{ s.id }}', '{{ s.last_name | replace("'", "\\'") }}', '{{ s.first_name | replace("'", "\\'") }}')">
-          Изм.
-        </button>
+        <div class="flex gap-8">
+          <button class="btn btn-sm btn-ghost"
+                  data-id="{{ s.id }}"
+                  data-last-name="{{ s.last_name }}"
+                  data-first-name="{{ s.first_name }}"
+                  onclick="editSignerFromBtn(this)">
+            Изм.
+          </button>
+          <button class="btn btn-sm btn-danger"
+                  hx-post="/ui/admin/signers/{{ s.id }}/deactivate"
+                  hx-confirm="Деактивировать подписанта?"
+                  hx-target="#admin-panel" hx-swap="outerHTML">
+            Удал.
+          </button>
+        </div>
       </li>
       {% else %}
       <li><span class="text-muted">Пусто</span></li>
@@ -68,9 +87,18 @@
 </div>
 
 <script>
+function editBranchFromBtn(btn) {
+  editBranch(btn.dataset.id, btn.dataset.name || "");
+}
+
+function editSignerFromBtn(btn) {
+  editSigner(btn.dataset.id, btn.dataset.lastName || "", btn.dataset.firstName || "");
+}
+
 function editBranch(id, name) {
   document.getElementById('edit-modal-title').textContent = 'Изменить филиал';
-  document.getElementById('edit-modal-body').innerHTML = `
+  const body = document.getElementById('edit-modal-body');
+  body.innerHTML = `
     <form hx-patch="/ui/admin/branches/${id}" hx-target="#admin-panel" hx-swap="outerHTML"
           onsubmit="closeModal('edit-modal')">
       <div class="form-row"><label>Название</label>
@@ -80,11 +108,13 @@ function editBranch(id, name) {
         <button type="submit" class="btn btn-primary">Сохранить</button>
       </div>
     </form>`;
+  if (window.htmx) htmx.process(body);
   openModal('edit-modal');
 }
 function editSigner(id, ln, fn) {
   document.getElementById('edit-modal-title').textContent = 'Изменить подписанта';
-  document.getElementById('edit-modal-body').innerHTML = `
+  const body = document.getElementById('edit-modal-body');
+  body.innerHTML = `
     <form hx-patch="/ui/admin/signers/${id}" hx-target="#admin-panel" hx-swap="outerHTML"
           onsubmit="closeModal('edit-modal')">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -98,6 +128,7 @@ function editSigner(id, ln, fn) {
         <button type="submit" class="btn btn-primary">Сохранить</button>
       </div>
     </form>`;
+  if (window.htmx) htmx.process(body);
   openModal('edit-modal');
 }
 </script>

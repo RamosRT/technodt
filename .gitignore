@@ -37,3 +37,4 @@ tmp/
 *.pdf
 !docs/**/*.pdf
 !templates/**/*.pdf
+

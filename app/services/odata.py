@@ -14,10 +14,10 @@ SELECT_FIELDS: dict[str, tuple[str, ...]] = {
     "Document_ПеремещениеТоваров": ("Number", "Date"),
     "Document_СчетФактураВыданный": (
         "Number",
+        "ПредставлениеНомера",
         "Date",
         "Корректировочный",
         "ДокументОснование",
-        "ДокументОснование_Key",
         "ДокументОснование_Type",
     ),
 }
@@ -54,7 +54,9 @@ def _parse_odata_date(s: str | None) -> date:
 
 def _extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
     raw_type = payload.get("ДокументОснование_Type")
-    raw_key = payload.get("ДокументОснование_Key")
+    # In this 1C OData, document refs are exposed as "<Field>" (GUID string),
+    # not "<Field>_Key" for Document_* types.
+    raw_key = payload.get("ДокументОснование") or payload.get("ДокументОснование_Key")
     if not raw_type or not raw_key:
         return None
     short = raw_type.split(".", 1)[-1]
@@ -70,16 +72,18 @@ def _extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
 def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocument:
     if entity == "Document_ПеремещениеТоваров":
         kind = "Перемещение товаров"
+        doc_number = str(payload.get("Number", ""))
         related = None
     elif entity == "Document_СчетФактураВыданный":
         kind = "УКД" if payload.get("Корректировочный") else "УПД"
+        doc_number = str(payload.get("ПредставлениеНомера") or payload.get("Number", ""))
         related = _extract_related_ref(payload)
     else:
         raise ValueError(f"unknown entity {entity}")
     return NormalizedDocument(
         entity=entity,
         doc_kind=kind,
-        doc_number=str(payload.get("Number", "")),
+        doc_number=doc_number,
         doc_date=_parse_odata_date(payload.get("Date")),
         related_realization_ref=related,
         raw_payload=payload,

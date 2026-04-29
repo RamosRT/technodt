@@ -1,6 +1,7 @@
 """UI routes — renders Jinja2 templates for the single-page HTMX frontend."""
 import uuid
 from pathlib import Path
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Cookie, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -29,7 +30,7 @@ router = APIRouter(tags=["ui"])
 
 
 def _operator(operator_name: str | None = Cookie(default=None)) -> str | None:
-    return operator_name or None
+    return unquote(operator_name) if operator_name else None
 
 
 # ─── Root ────────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ async def index(request: Request, operator: str | None = Depends(_operator)):
 @router.post("/ui/operator", response_class=HTMLResponse)
 async def set_operator(request: Request, operator_name: str = Form(...)):
     response = templates.TemplateResponse(request, "index.html", {"operator": operator_name})
-    response.set_cookie("operator_name", operator_name, httponly=True, samesite="lax")
+    response.set_cookie("operator_name", quote(operator_name), httponly=True, samesite="lax")
     return response
 
 
@@ -72,7 +73,8 @@ async def ui_create_envelope(
 
     return templates.TemplateResponse(request, "partials/envelope_card.html", {
         "envelope": envelope,
-        "documents": envelope.documents,
+        # New envelope is always empty; avoid async lazy-load in template context.
+        "documents": [],
         "branches": branches,
         "signers": signers,
         "status_labels": STATUS_LABELS,
@@ -260,8 +262,8 @@ async def ui_verify_finish(
 
 async def _admin_ctx(session: AsyncSession) -> dict:
     return {
-        "branches": await dict_svc.list_branches(session, only_active=False),
-        "signers": await dict_svc.list_signers(session, only_active=False),
+        "branches": await dict_svc.list_branches(session, only_active=True),
+        "signers": await dict_svc.list_signers(session, only_active=True),
     }
 
 
@@ -278,6 +280,7 @@ async def ui_create_branch(
     operator: str | None = Depends(_operator),
 ):
     await dict_svc.create_branch(session, name=name, operator=operator or "ui")
+    await session.commit()
     return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
@@ -290,6 +293,21 @@ async def ui_patch_branch(
     operator: str | None = Depends(_operator),
 ):
     await dict_svc.patch_branch(session, branch_id=branch_id, name=name, is_active=None, operator=operator or "ui")
+    await session.commit()
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+
+
+@router.post("/ui/admin/branches/{branch_id}/deactivate", response_class=HTMLResponse)
+async def ui_deactivate_branch(
+    request: Request,
+    branch_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+):
+    await dict_svc.patch_branch(
+        session, branch_id=branch_id, name=None, is_active=False, operator=operator or "ui"
+    )
+    await session.commit()
     return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
@@ -304,6 +322,7 @@ async def ui_create_signer(
     await dict_svc.create_signer(
         session, last_name=last_name, first_name=first_name, operator=operator or "ui"
     )
+    await session.commit()
     return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
 
 
@@ -320,4 +339,19 @@ async def ui_patch_signer(
         session, signer_id=signer_id, last_name=last_name, first_name=first_name,
         is_active=None, operator=operator or "ui"
     )
+    await session.commit()
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+
+
+@router.post("/ui/admin/signers/{signer_id}/deactivate", response_class=HTMLResponse)
+async def ui_deactivate_signer(
+    request: Request,
+    signer_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+):
+    await dict_svc.patch_signer(
+        session, signer_id=signer_id, last_name=None, first_name=None, is_active=False, operator=operator or "ui"
+    )
+    await session.commit()
     return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
