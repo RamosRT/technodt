@@ -700,6 +700,8 @@ async def ui_patch_operator(
     ).scalar_one_or_none()
     if target and target.username == operator and is_active == "false":
         return HTMLResponse('<div class="alert alert-error">Нельзя деактивировать себя</div>', status_code=400)
+    if target and target.username == operator and is_admin_form == "false":
+        return HTMLResponse('<div class="alert alert-error">Нельзя снять роль администратора у себя</div>', status_code=400)
     await op_svc.patch_operator(
         session,
         operator_id=operator_id,

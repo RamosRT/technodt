@@ -8,13 +8,15 @@
 
 ## Стек
 
-| Слой | Технология |
-|---|---|
-| Backend | Python 3.13 + FastAPI + SQLAlchemy 2 (async) |
-| БД | PostgreSQL 16 |
-| Web UI | HTMX + vanilla JS, одна HTML-страница |
-| Печать | Jinja2 → PDF (WeasyPrint); ZPL для термопринтера |
-| Запуск | uvicorn → nssm (Windows Service) |
+
+| Слой    | Технология                                       |
+| ------- | ------------------------------------------------ |
+| Backend | Python 3.13 + FastAPI + SQLAlchemy 2 (async)     |
+| БД      | PostgreSQL 16                                    |
+| Web UI  | HTMX + vanilla JS, одна HTML-страница            |
+| Печать  | Jinja2 → PDF (WeasyPrint); ZPL для термопринтера |
+| Запуск  | uvicorn → nssm (Windows Service)                 |
+
 
 ---
 
@@ -66,15 +68,17 @@ copy .env.example .env
 
 Обязательные ключи:
 
-| Ключ | Описание |
-|---|---|
-| `DATABASE_URL` | asyncpg-строка подключения к рабочей БД |
-| `DATABASE_URL_TEST` | asyncpg-строка подключения к тестовой БД |
-| `ADMIN_TOKEN` | Секретный токен для `X-Admin-Token` (эндпоинт сброса) |
-| `ODATA_BASE_URL` | Корень OData-сервиса 1С (`…/odata/standard.odata`) |
-| `ODATA_ADMIN_USER` | Логин технической учётной записи 1С |
-| `ODATA_PASSWORD` | Пароль технической учётной записи 1С |
-| `ODATA_TIMEOUT_SECONDS` | Таймаут запросов к 1С (по умолчанию 60) |
+
+| Ключ                    | Описание                                              |
+| ----------------------- | ----------------------------------------------------- |
+| `DATABASE_URL`          | asyncpg-строка подключения к рабочей БД               |
+| `DATABASE_URL_TEST`     | asyncpg-строка подключения к тестовой БД              |
+| `ADMIN_TOKEN`           | Секретный токен для `X-Admin-Token` (эндпоинт сброса) |
+| `ODATA_BASE_URL`        | Корень OData-сервиса 1С (`…/odata/standard.odata`)    |
+| `ODATA_ADMIN_USER`      | Логин технической учётной записи 1С                   |
+| `ODATA_PASSWORD`        | Пароль технической учётной записи 1С                  |
+| `ODATA_TIMEOUT_SECONDS` | Таймаут запросов к 1С (по умолчанию 60)               |
+
 
 ### 4. Миграции
 
@@ -88,7 +92,7 @@ venv\Scripts\alembic upgrade head
 venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 ```
 
-Откройте браузер: **http://127.0.0.1:8080/**
+Откройте браузер: **[http://127.0.0.1:8080/](http://127.0.0.1:8080/)**
 
 ---
 
@@ -156,38 +160,46 @@ docker-compose.yml         # PostgreSQL для разработки
 
 ### Конверты
 
-| Метод | URL | Описание |
-|---|---|---|
-| `POST` | `/api/envelopes` | Создать черновик конверта |
-| `GET` | `/api/envelopes/{id}` | Получить конверт по UUID |
-| `GET` | `/api/envelopes/by-barcode/{bc}` | Найти конверт по ШК |
-| `POST` | `/api/envelopes/{id}/documents` | Добавить документ (тело: `{"barcode": "..."}`) |
-| `DELETE` | `/api/envelopes/{id}/documents/{doc_id}` | Удалить документ |
-| `POST` | `/api/envelopes/{id}/seal` | Запечатать конверт |
+
+| Метод    | URL                                      | Описание                                       |
+| -------- | ---------------------------------------- | ---------------------------------------------- |
+| `POST`   | `/api/envelopes`                         | Создать черновик конверта                      |
+| `GET`    | `/api/envelopes/{id}`                    | Получить конверт по UUID                       |
+| `GET`    | `/api/envelopes/by-barcode/{bc}`         | Найти конверт по ШК                            |
+| `POST`   | `/api/envelopes/{id}/documents`          | Добавить документ (тело: `{"barcode": "..."}`) |
+| `DELETE` | `/api/envelopes/{id}/documents/{doc_id}` | Удалить документ                               |
+| `POST`   | `/api/envelopes/{id}/seal`               | Запечатать конверт                             |
+
 
 ### Верификация
 
-| Метод | URL | Описание |
-|---|---|---|
-| `POST` | `/api/envelopes/{id}/verify/start` | Начать верификацию |
-| `POST` | `/api/envelopes/{id}/verify/scan` | Отсканировать документ |
+
+| Метод  | URL                                 | Описание                                  |
+| ------ | ----------------------------------- | ----------------------------------------- |
+| `POST` | `/api/envelopes/{id}/verify/start`  | Начать верификацию                        |
+| `POST` | `/api/envelopes/{id}/verify/scan`   | Отсканировать документ                    |
 | `POST` | `/api/envelopes/{id}/verify/finish` | Завершить (`force=true` — с расхождением) |
+
 
 ### Справочники
 
-| Метод | URL | Описание |
-|---|---|---|
-| `GET/POST` | `/api/branches` | Список / создать филиал |
-| `PATCH` | `/api/branches/{id}` | Изменить филиал |
-| `GET/POST` | `/api/signers` | Список / создать подписанта |
-| `PATCH` | `/api/signers/{id}` | Изменить подписанта |
+
+| Метод      | URL                  | Описание                    |
+| ---------- | -------------------- | --------------------------- |
+| `GET/POST` | `/api/branches`      | Список / создать филиал     |
+| `PATCH`    | `/api/branches/{id}` | Изменить филиал             |
+| `GET/POST` | `/api/signers`       | Список / создать подписанта |
+| `PATCH`    | `/api/signers/{id}`  | Изменить подписанта         |
+
 
 ### Служебные
 
-| Метод | URL | Описание |
-|---|---|---|
-| `GET` | `/api/health` | Проверка состояния сервиса |
+
+| Метод  | URL                | Описание                                         |
+| ------ | ------------------ | ------------------------------------------------ |
+| `GET`  | `/api/health`      | Проверка состояния сервиса                       |
 | `POST` | `/api/admin/reset` | Очистить все данные (только `ENV != production`) |
+
 
 **Аутентификация:** оператор передаётся cookie `operator_name`; администратор — заголовком `X-Admin-Token`.
 
@@ -221,6 +233,7 @@ def barcode_to_guid(barcode: str) -> str:
 ### Поиск документа в 1С (OData)
 
 Перебираем типы документов по порядку до первого 200-ответа:
+
 1. `Document_ПеремещениеТоваров`
 2. `Document_СчетФактураВыданный`
 
@@ -254,3 +267,4 @@ venv\Scripts\python -m ruff format app/ tests/
 venv\Scripts\alembic revision --autogenerate -m "describe change"
 venv\Scripts\alembic upgrade head
 ```
+

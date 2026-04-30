@@ -22,6 +22,9 @@
                 {% if not op.is_admin %}
                 <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
                         hx-vals='{"is_admin":"true"}' hx-target="#main-area">Admin</button>
+                {% elif op.username != operator %}
+                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
+                        hx-vals='{"is_admin":"false"}' hx-target="#main-area">Снять admin</button>
                 {% endif %}
                 {% if op.is_active %}
                 <button class="btn btn-danger btn-sm" hx-patch="/ui/operators/{{ op.id }}"
