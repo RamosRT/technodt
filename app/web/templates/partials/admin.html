@@ -1,5 +1,12 @@
-{# Admin / dictionaries panel #}
+{# Dictionaries panel #}
 <div id="admin-panel">
+<div class="list-page dictionaries-page">
+  <div class="dict-header">
+    <h2><i data-lucide="book-open"></i> Справочники</h2>
+    {% if not is_admin %}
+    <span class="readonly-note"><i data-lucide="eye"></i> Режим просмотра</span>
+    {% endif %}
+  </div>
 <div class="admin-grid">
 
   <!-- Branches -->
@@ -9,6 +16,7 @@
       {% for b in branches %}
       <li id="branch-{{ b.id }}">
         <span>{{ b.name }}</span>
+        {% if is_admin %}
         <div class="flex gap-8">
           <button class="btn btn-sm btn-ghost"
                   data-id="{{ b.id }}"
@@ -23,17 +31,20 @@
             Удал.
           </button>
         </div>
+        {% endif %}
       </li>
       {% else %}
       <li><span class="text-muted">Пусто</span></li>
       {% endfor %}
     </ul>
+    {% if is_admin %}
     <div style="margin-top:12px">
       <form hx-post="/ui/admin/branches" hx-target="#admin-panel" hx-swap="outerHTML" class="flex gap-8">
         <input name="name" class="form-control" placeholder="Название филиала" required>
         <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
       </form>
     </div>
+    {% endif %}
   </div>
 
   <!-- Signers -->
@@ -43,6 +54,7 @@
       {% for s in signers %}
       <li id="signer-{{ s.id }}">
         <span>{{ s.last_name }} {{ s.first_name }}</span>
+        {% if is_admin %}
         <div class="flex gap-8">
           <button class="btn btn-sm btn-ghost"
                   data-id="{{ s.id }}"
@@ -58,11 +70,13 @@
             Удал.
           </button>
         </div>
+        {% endif %}
       </li>
       {% else %}
       <li><span class="text-muted">Пусто</span></li>
       {% endfor %}
     </ul>
+    {% if is_admin %}
     <div style="margin-top:12px">
       <form hx-post="/ui/admin/signers" hx-target="#admin-panel" hx-swap="outerHTML">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -72,8 +86,10 @@
         <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
       </form>
     </div>
+    {% endif %}
   </div>
 
+</div>
 </div>
 
 <!-- Edit modals (inline) -->

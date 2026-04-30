@@ -1,0 +1,125 @@
+<div class="list-page" id="documents-list-page">
+
+  <div class="summary-bar">
+    <div class="s-chip chip-all">
+      <div class="s-chip-icon"><i data-lucide="files"></i></div>
+      <div><div class="s-chip-num">{{ summary.total }}</div><div class="s-chip-label">Всего за период</div></div>
+    </div>
+    <div class="s-chip chip-ok">
+      <div class="s-chip-icon"><i data-lucide="circle-check"></i></div>
+      <div><div class="s-chip-num" style="color:#2e7d32">{{ summary.verified }}</div><div class="s-chip-label">Верифицированы</div></div>
+    </div>
+    <div class="s-chip chip-transit">
+      <div class="s-chip-icon"><i data-lucide="truck"></i></div>
+      <div><div class="s-chip-num" style="color:#f57f17">{{ summary.in_transit }}</div><div class="s-chip-label">В пути</div></div>
+    </div>
+    <div class="s-chip chip-lost">
+      <div class="s-chip-icon"><i data-lucide="triangle-alert"></i></div>
+      <div><div class="s-chip-num" style="color:#b71c1c">{{ summary.missing }}</div><div class="s-chip-label">Недостача</div></div>
+    </div>
+  </div>
+
+  <form class="filter-bar" hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML">
+    <span class="filter-label">Фильтр</span>
+    <input class="filter-input" type="date" name="date_from" value="{{ filters.date_from }}">
+    <input class="filter-input" type="date" name="date_to" value="{{ filters.date_to }}">
+    <select class="filter-select" name="doc_kind">
+      <option value="">Все типы</option>
+      {% for kind in ["УПД", "УКД", "Перемещение", "Перемещение товаров"] %}
+      <option value="{{ kind }}" {% if filters.doc_kind == kind %}selected{% endif %}>{{ kind }}</option>
+      {% endfor %}
+    </select>
+    <select class="filter-select" name="status">
+      <option value="">Все статусы</option>
+      <option value="verified" {% if filters.status == "verified" %}selected{% endif %}>Верифицирован</option>
+      <option value="in_transit" {% if filters.status == "in_transit" %}selected{% endif %}>В пути</option>
+      <option value="missing" {% if filters.status == "missing" %}selected{% endif %}>Недостача</option>
+    </select>
+    <select class="filter-select" name="branch_id">
+      <option value="">Все филиалы</option>
+      {% for b in branches %}
+      <option value="{{ b.id }}" {% if filters.branch_id == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+      {% endfor %}
+    </select>
+    <input class="filter-input" type="text" name="search" value="{{ filters.search }}"
+           placeholder="№ документа / ШК" style="width:160px">
+    <button class="btn-primary" type="submit"><i data-lucide="search"></i> Найти</button>
+    <a class="btn-secondary" href="/api/documents/export?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&doc_kind={{ filters.doc_kind }}&status={{ filters.status }}&branch_id={{ filters.branch_id }}&search={{ filters.search }}" target="_blank">
+      <i data-lucide="download"></i> Экспорт
+    </a>
+  </form>
+
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Тип</th>
+          <th>№ документа</th>
+          <th>Дата документа</th>
+          <th>Конверт</th>
+          <th>Добавлен</th>
+          <th>Запечатан</th>
+          <th>Верифицирован</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        <tr class="{% if doc.status == 'missing' %}row-discrepancy{% elif doc.status == 'verified' %}row-ok{% endif %}">
+          <td><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:#e8edf6;color:#2874b9">{{ doc.doc_kind or '—' }}</span></td>
+          <td style="font-weight:600;color:#1b2848">{{ doc.doc_number or '—' }}</td>
+          <td style="color:#8895a7">{{ doc.doc_date.strftime('%d.%m.%Y') if doc.doc_date else '—' }}</td>
+          <td>
+            <button class="table-link" type="button"
+                    hx-get="/ui/envelopes/{{ doc.envelope_id }}/card"
+                    hx-target="#main-area" hx-swap="innerHTML">
+              {{ doc.envelope_number }} <i data-lucide="arrow-up-right"></i>
+            </button>
+          </td>
+          <td style="font-size:11px">
+            {{ doc.added_at.strftime('%d.%m %H:%M') if doc.added_at else '—' }}<br>
+            <span style="color:#8895a7">{{ doc.created_by }}</span>
+          </td>
+          <td style="font-size:11px;color:#8895a7">{{ doc.sealed_at.strftime('%d.%m %H:%M') if doc.sealed_at else '—' }}</td>
+          <td style="font-size:11px">
+            {% if doc.scanned_at_verification %}
+              {{ doc.scanned_at_verification.strftime('%d.%m %H:%M') }}<br>
+              <span style="color:#8895a7">{{ doc.verified_by or '' }}</span>
+            {% elif doc.status == 'missing' %}
+              <span style="color:#cc0c00;font-style:italic">— не отсканирован</span>
+            {% else %}
+              <span style="color:#8895a7;font-style:italic">— ожидает</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if doc.status == 'verified' %}
+              <span class="status-pill sp-verified"><i data-lucide="circle-check"></i> Верифицирован</span>
+            {% elif doc.status == 'missing' %}
+              <span class="status-pill sp-discrepancy"><i data-lucide="triangle-alert"></i> Недостача</span>
+            {% elif doc.status == 'in_transit' %}
+              <span class="status-pill sp-transit"><i data-lucide="truck"></i> В пути</span>
+            {% else %}
+              <span class="status-pill sp-draft"><i data-lucide="pencil"></i> Черновик</span>
+            {% endif %}
+          </td>
+          <td>
+            <button class="table-link" type="button"
+                    hx-get="/ui/envelopes/{{ doc.envelope_id }}/card"
+                    hx-target="#main-area" hx-swap="innerHTML">
+              <i data-lucide="eye"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;color:#8895a7;padding:24px">Документы не найдены</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="table-footer">
+      <span>Показано {{ documents | length }} из {{ total }}</span>
+      <div class="pagination"><span class="page-btn current">{{ page }}</span></div>
+    </div>
+  </div>
+</div>
+<script>if(typeof lucide!=='undefined')lucide.createIcons();</script>

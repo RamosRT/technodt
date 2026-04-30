@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 
-from sqlalchemy import select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,8 +14,9 @@ from app.exceptions import (
     EnvelopeNotDraft,
     EnvelopeNotFound,
     InvalidSealPayload,
+    AppError,
 )
-from app.models import Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Signer
+from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Signer
 from app.services.audit import write_event
 from app.services.barcode import doc_barcode_to_guid, generate_envelope_codes
 from app.services.odata import OneCClient
@@ -24,12 +25,154 @@ from app.services.odata import OneCClient
 MAX_CODE_RETRIES = 5
 
 
+def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
+    start = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
+    end = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
+    return start, end
+
+
+def _envelope_filters(
+    stmt: Select,
+    *,
+    status: EnvelopeStatus | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    branch_id: uuid.UUID | None = None,
+    search: str | None = None,
+) -> Select:
+    if status is not None:
+        stmt = stmt.where(Envelope.status == status)
+    start, end = _date_bounds(date_from, date_to)
+    if start is not None:
+        stmt = stmt.where(Envelope.created_at >= start)
+    if end is not None:
+        stmt = stmt.where(Envelope.created_at <= end)
+    if branch_id is not None:
+        stmt = stmt.where(
+            or_(
+                Envelope.origin_branch_id == branch_id,
+                Envelope.destination_branch_id == branch_id,
+            )
+        )
+    if search:
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(or_(Envelope.number.ilike(term), Envelope.barcode.ilike(term)))
+    return stmt
+
+
+async def list_envelopes(
+    session: AsyncSession,
+    *,
+    status: EnvelopeStatus | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    branch_id: uuid.UUID | None = None,
+    search: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> tuple[list[dict], int]:
+    base = select(Envelope)
+    base = _envelope_filters(
+        base,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        branch_id=branch_id,
+        search=search,
+    )
+    total = (
+        await session.execute(
+            _envelope_filters(
+                select(func.count(Envelope.id)),
+                status=status,
+                date_from=date_from,
+                date_to=date_to,
+                branch_id=branch_id,
+                search=search,
+            )
+        )
+    ).scalar_one()
+
+    result = await session.execute(
+        base.options(selectinload(Envelope.documents))
+        .order_by(Envelope.created_at.desc(), Envelope.number.desc())
+        .offset((max(page, 1) - 1) * page_size)
+        .limit(page_size)
+    )
+    envelopes = list(result.scalars().all())
+
+    branch_ids = {
+        branch_id
+        for env in envelopes
+        for branch_id in (env.origin_branch_id, env.destination_branch_id)
+        if branch_id is not None
+    }
+    branch_names = {}
+    if branch_ids:
+        rows = (await session.execute(select(Branch.id, Branch.name).where(Branch.id.in_(branch_ids)))).all()
+        branch_names = {row.id: row.name for row in rows}
+
+    items = []
+    for env in envelopes:
+        missing_count = 0
+        if env.status is EnvelopeStatus.verified_with_discrepancy:
+            missing_count = sum(1 for doc in env.documents if doc.scanned_at_verification is None)
+        items.append(
+            {
+                "id": env.id,
+                "number": env.number,
+                "barcode": env.barcode,
+                "status": env.status,
+                "created_at": env.created_at,
+                "sealed_at": env.sealed_at,
+                "verified_at": env.verified_at,
+                "created_by": env.created_by,
+                "verified_by": env.verified_by,
+                "origin_branch_id": env.origin_branch_id,
+                "destination_branch_id": env.destination_branch_id,
+                "origin_branch_name": branch_names.get(env.origin_branch_id),
+                "destination_branch_name": branch_names.get(env.destination_branch_id),
+                "document_count": len(env.documents),
+                "missing_count": missing_count,
+            }
+        )
+    return items, total
+
+
 # ---------------------------------------------------------------------------
 # Task 15: create_envelope
 # ---------------------------------------------------------------------------
 
 
-async def create_envelope(session: AsyncSession, *, operator: str) -> Envelope:
+async def discard_empty_drafts(session: AsyncSession, *, operator: str) -> int:
+    """Remove abandoned draft envelopes for an operator before starting a new one."""
+    empty_ids = list(
+        (
+            await session.execute(
+                select(Envelope.id)
+                .outerjoin(EnvelopeDocument, EnvelopeDocument.envelope_id == Envelope.id)
+                .where(
+                    Envelope.status == EnvelopeStatus.draft,
+                    Envelope.created_by == operator,
+                )
+                .group_by(Envelope.id)
+                .having(func.count(EnvelopeDocument.id) == 0)
+            )
+        ).scalars().all()
+    )
+    if not empty_ids:
+        return 0
+
+    await session.execute(delete(AuditLog).where(AuditLog.envelope_id.in_(empty_ids)))
+    await session.execute(delete(Envelope).where(Envelope.id.in_(empty_ids)))
+    await session.flush()
+    return len(empty_ids)
+
+
+async def create_envelope(session: AsyncSession, *, operator: str, discard_empty: bool = True) -> Envelope:
+    if discard_empty:
+        await discard_empty_drafts(session, operator=operator)
+
     last_exc: Exception | None = None
     for _ in range(MAX_CODE_RETRIES):
         number, barcode = generate_envelope_codes()
@@ -243,5 +386,31 @@ async def seal(
             "origin": str(origin_branch_id),
             "destination": str(destination_branch_id) if destination_branch_id else None,
         },
+    )
+    return envelope
+
+
+async def unseal(
+    session: AsyncSession,
+    *,
+    envelope: Envelope,
+    reason: str,
+    operator: str,
+) -> Envelope:
+    if envelope.status is not EnvelopeStatus.sealed:
+        raise AppError("Распечатать можно только запечатанный конверт", status_code=409, code="envelope_not_sealed")
+    reason = reason.strip()
+    if not reason:
+        raise InvalidSealPayload("Укажите причину распечатки")
+
+    envelope.status = EnvelopeStatus.draft
+    envelope.sealed_at = None
+
+    await write_event(
+        session,
+        envelope_id=envelope.id,
+        event="unseal",
+        actor=operator,
+        payload={"reason": reason},
     )
     return envelope

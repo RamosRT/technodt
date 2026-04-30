@@ -1,0 +1,81 @@
+<section class="list-page">
+  <div class="list-header">
+    <h2><i data-lucide="settings-2"></i> Администрирование</h2>
+  </div>
+
+  <div class="admin-v2-grid">
+    <div>
+      <h3 class="section-title"><i data-lucide="users"></i> Операторы</h3>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Имя</th><th>Роль</th><th>Активен</th><th>Создан</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for op in operators %}
+            <tr>
+              <td><strong>{{ op.username }}</strong></td>
+              <td>{% if op.is_admin %}<span class="admin-badge">Admin</span>{% else %}<span class="text-muted">Оператор</span>{% endif %}</td>
+              <td>{% if op.is_active %}<span class="ok-text">Да</span>{% else %}<span class="danger-text">Нет</span>{% endif %}</td>
+              <td>{{ op.created_at.strftime('%d.%m.%Y') }}</td>
+              <td class="row-actions">
+                {% if not op.is_admin %}
+                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
+                        hx-vals='{"is_admin":"true"}' hx-target="#main-area">Admin</button>
+                {% endif %}
+                {% if op.is_active %}
+                <button class="btn btn-danger btn-sm" hx-patch="/ui/operators/{{ op.id }}"
+                        hx-vals='{"is_active":"false"}' hx-target="#main-area">Отключить</button>
+                {% else %}
+                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
+                        hx-vals='{"is_active":"true"}' hx-target="#main-area">Включить</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <form class="filter-bar" hx-post="/ui/operators" hx-target="#main-area">
+        <input class="form-control" name="username" placeholder="Имя оператора" required>
+        <label class="checkbox-inline"><input type="checkbox" name="is_admin" value="true"> Admin</label>
+        <button class="btn btn-primary" type="submit"><i data-lucide="user-plus"></i> Добавить</button>
+      </form>
+    </div>
+
+    <div>
+      <h3 class="section-title"><i data-lucide="history"></i> Последние события</h3>
+      <div id="audit-panel">
+        {% include "partials/audit_panel.html" %}
+      </div>
+
+      {% if show_reset %}
+      <div class="danger-zone">
+        <h3><i data-lucide="triangle-alert"></i> Опасная зона</h3>
+        <button class="btn btn-danger" onclick="openModal('reset-modal')"><i data-lucide="trash-2"></i> Сброс базы данных</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% if show_reset %}
+<div id="reset-modal" hidden>
+<div class="modal-overlay" onclick="if(event.target===this)this.parentElement.setAttribute('hidden','')">
+<div class="modal">
+  <div class="modal-title">Полный сброс базы данных</div>
+  <form hx-post="/ui/admin/reset" hx-target="#main-area" hx-swap="innerHTML">
+    <div class="form-row">
+      <label>Кодовое слово</label>
+      <input class="form-control" name="confirm" required placeholder="I_KNOW_WHAT_I_DO">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('reset-modal')">Отмена</button>
+      <button type="submit" class="btn btn-danger">Подтвердить сброс</button>
+    </div>
+  </form>
+</div>
+</div>
+</div>
+{% endif %}

@@ -3,39 +3,92 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Конверт-трек</title>
+<title>ТехноКонверт</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/app.js" defer></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer onload="lucide.createIcons()"></script>
 </head>
 <body hx-boost="false">
 
 <input id="scanner-input" type="text" autocomplete="off" tabindex="-1" aria-hidden="true">
 
-<!-- Header -->
-<header class="app-header">
-  <img class="logo" src="/static/icon.png" alt="">
-  <span class="app-title">Конверт-трек</span>
-  {% if operator %}
-  <span class="operator-badge">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-    {{ operator }}
-    <button class="btn-link" hx-post="/ui/operator/clear" hx-target="body" hx-swap="outerHTML">Выйти</button>
-  </span>
-  {% endif %}
-</header>
+{% if operator %}
+<nav class="ta-navbar">
+  <div class="ta-logo">
+    <div class="ta-logo-icon">
+      <img src="/static/icon.png" alt="">
+    </div>
+    <span class="ta-logo-text">ТехноКонверт</span>
+  </div>
 
-<!-- Mode bar -->
-<div class="mode-bar">
-  <span class="mode-label">Режим:</span>
-  <span id="mode-bar-name" class="mode-name">Ожидание</span>
-  <span id="mode-bar-hint" class="scan-hint"></span>
-</div>
+  <div class="ta-nav-items">
+    <button class="ta-nav-item" type="button"
+            hx-post="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('register');setActiveTab(this)">
+      <i data-lucide="package-plus"></i> Регистрация
+    </button>
+    <button class="ta-nav-item" type="button"
+            hx-get="/ui/verify" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('verify');setActiveTab(this)">
+      <i data-lucide="scan-line"></i> Верификация
+    </button>
+    <button class="ta-nav-item" type="button"
+            hx-get="/ui/dictionaries" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle');setActiveTab(this)">
+      <i data-lucide="book-open"></i> Справочники
+    </button>
+    {% if is_admin %}
+    <button class="ta-nav-item" type="button"
+            hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle');setActiveTab(this)">
+      <i data-lucide="archive"></i> Конверты
+    </button>
+    <button class="ta-nav-item" type="button"
+            hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle');setActiveTab(this)">
+      <i data-lucide="file-text"></i> Документы
+    </button>
+    {% endif %}
+  </div>
 
-<!-- Page content -->
+  <div class="ta-nav-right">
+    <div class="ta-operator">
+      <i data-lucide="circle-user"></i>
+      <span>{{ operator }}</span>
+    </div>
+    {% if is_admin %}
+    <span class="ta-admin-badge">Admin</span>
+    <button class="ta-icon-btn" type="button"
+            hx-get="/ui/admin" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle')" title="Настройки">
+      <i data-lucide="settings-2"></i>
+    </button>
+    {% endif %}
+    <button class="ta-icon-btn" type="button"
+            hx-post="/ui/operator/clear" hx-target="body" hx-swap="outerHTML"
+            title="Выйти">
+      <i data-lucide="log-out"></i>
+    </button>
+  </div>
+</nav>
+{% endif %}
+
 <main class="main-content" id="main-area">
   {% block content %}{% endblock %}
 </main>
 
+<script>
+function setActiveTab(el) {
+  document.querySelectorAll('.ta-nav-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+document.body.addEventListener('htmx:afterSwap', () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+</script>
 </body>
 </html>

@@ -30,7 +30,7 @@ async def test_engine():
 async def truncate_tables(test_engine):
     """Wipe all data between tests; schema stays."""
     async with test_engine.begin() as conn:
-        for tbl in ("audit_log", "envelope_documents", "envelopes", "signers", "branches"):
+        for tbl in ("audit_log", "envelope_documents", "envelopes", "signers", "branches", "operators"):
             await conn.execute(text(f"TRUNCATE TABLE {tbl} RESTART IDENTITY CASCADE"))
     yield
 

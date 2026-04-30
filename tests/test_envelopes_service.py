@@ -35,6 +35,22 @@ async def test_create_envelope_returns_draft_with_codes(db_session):
     assert audits[0].envelope_id == env.id
 
 
+@pytest.mark.asyncio
+async def test_create_envelope_discards_previous_empty_drafts_for_operator(db_session):
+    old = await svc.create_envelope(db_session, operator="Иван")
+    await db_session.commit()
+
+    new = await svc.create_envelope(db_session, operator="Иван")
+    await db_session.commit()
+
+    envelopes = (await db_session.execute(select(Envelope))).scalars().all()
+    audits = (await db_session.execute(select(AuditLog))).scalars().all()
+    assert [env.id for env in envelopes] == [new.id]
+    assert old.id != new.id
+    assert len(audits) == 1
+    assert audits[0].envelope_id == new.id
+
+
 # ---------------------------------------------------------------------------
 # Task 16: get_by_id, get_by_barcode
 # ---------------------------------------------------------------------------

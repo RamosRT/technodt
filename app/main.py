@@ -12,6 +12,9 @@ from app.routers.api import envelopes as envelopes_api
 from app.routers.api import dictionaries as dictionaries_api
 from app.routers.api import verify as verify_api
 from app.routers.api import admin as admin_api
+from app.routers.api import operators as operators_api
+from app.routers.api import documents as documents_api
+from app.routers.api import audit as audit_api
 from app.routers.ui import pages as ui_pages
 from app.services.odata import OneCClient
 
@@ -43,4 +46,7 @@ app.include_router(envelopes_api.router)
 app.include_router(dictionaries_api.router)
 app.include_router(verify_api.router)
 app.include_router(admin_api.router)
+app.include_router(operators_api.router)
+app.include_router(documents_api.router)
+app.include_router(audit_api.router)
 app.include_router(ui_pages.router)

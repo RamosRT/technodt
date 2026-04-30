@@ -3,6 +3,21 @@
 <script>onEnvelopeLoaded('{{ envelope.id }}', '{{ envelope.barcode }}', {{ documents|length }});</script>
 {% set env_status = envelope.status.value if envelope.status.value is defined else envelope.status %}
 
+{% if is_admin and env_status == 'sealed' %}
+<div class="unseal-panel" id="unseal-panel-{{ envelope.id }}">
+  <div class="unseal-icon"><i data-lucide="lock-open"></i></div>
+  <div class="unseal-text">
+    <strong>Редактирование состава (только Admin)</strong>
+    <span>Конверт запечатан. Распечатайте его, чтобы отредактировать состав, затем запечатайте снова.</span>
+  </div>
+  <button class="btn-unseal"
+          onclick="document.getElementById('unseal-modal-{{ envelope.id }}').style.display='flex';
+                   document.getElementById('unseal-panel-{{ envelope.id }}').style.display='none'">
+    <i data-lucide="lock-open"></i> Распечатать
+  </button>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-title">
     <span>{{ envelope.number }}</span>
@@ -23,7 +38,7 @@
   {% if env_status == 'draft' %}
   <!-- manual barcode input for keyboard entry -->
   <div class="flex gap-8 mt-8" style="margin-bottom:16px">
-    <input id="manual-bc" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
+    <input id="manual-bc" class="form-control" placeholder="ШК документа или черновика конверта" autocomplete="off">
     <button class="btn btn-primary" onclick="dispatchManual()">Добавить</button>
   </div>
   <script>
@@ -49,7 +64,7 @@
             {% if not documents %}disabled title="Нет документов"{% endif %}>
       Запечатать
     </button>
-    <span class="text-muted" style="align-self:center">Отсканируйте документы или введите ШК</span>
+    <span class="text-muted" style="align-self:center">Отсканируйте документы или ШК черновика конверта</span>
   </div>
   {% endif %}
 
@@ -60,7 +75,85 @@
     <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank">Этикетка (ZPL)</a>
   </div>
   {% endif %}
+
+  <div class="audit-section-header"
+       onclick="var b=document.getElementById('audit-{{ envelope.id }}');
+                var open=b.style.display!=='none';
+                b.style.display=open?'none':'block';
+                this.querySelector('.audit-toggle-hint').textContent=open?'Показать':'Свернуть'">
+    <div class="audit-section-header-left">
+      <i data-lucide="history"></i>
+      История событий
+      <span class="audit-count-badge">{{ audit_events | length }}</span>
+    </div>
+    <span class="audit-toggle-hint">Показать</span>
+  </div>
+  <div id="audit-{{ envelope.id }}" class="audit-timeline-wrap" style="display:none">
+    <div class="audit-timeline">
+      {% for ev in audit_events %}
+      <div class="audit-event">
+        <div class="audit-dot
+          {% if ev.event in ('add_doc', 'remove_doc') %}dot-doc
+          {% elif ev.event == 'seal' %}dot-seal
+          {% elif ev.event == 'unseal' %}dot-unseal
+          {% elif 'verify' in ev.event %}dot-verify
+          {% endif %}"></div>
+        <div class="audit-event-body">
+          <div class="audit-event-title">
+            {% if ev.event == 'create' %}Конверт создан
+            {% elif ev.event == 'add_doc' %}Добавлен документ{% if ev.payload.doc_number %}: {{ ev.payload.doc_number }}{% endif %}
+            {% elif ev.event == 'remove_doc' %}Удален документ{% if ev.payload.doc_number %}: {{ ev.payload.doc_number }}{% endif %}
+            {% elif ev.event == 'seal' %}Запечатан
+            {% elif ev.event == 'unseal' %}Распечатан
+            {% elif ev.event == 'verify_start' %}Верификация начата
+            {% elif ev.event == 'verify_scan' %}Документ отсканирован
+            {% elif ev.event == 'verify_finish' %}Верификация завершена
+            {% else %}{{ ev.event }}
+            {% endif %}
+          </div>
+          <div class="audit-event-meta">
+            <span><i data-lucide="user"></i> {{ ev.actor }}</span>
+            <span><i data-lucide="clock"></i> {{ ev.at.strftime('%d.%m.%Y %H:%M') }}</span>
+          </div>
+          {% if ev.event == 'unseal' and ev.payload.reason %}
+          <div class="audit-detail">Причина: {{ ev.payload.reason }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">Событий пока нет</div>
+      {% endfor %}
+    </div>
+  </div>
 </div>
+
+{% if is_admin and env_status == 'sealed' %}
+<div class="modal-backdrop" id="unseal-modal-{{ envelope.id }}" style="display:none">
+<div class="modal-box">
+  <div class="modal-title"><i data-lucide="triangle-alert"></i> Подтверждение распечатки</div>
+  <div class="modal-warning"><i data-lucide="info"></i> Действие будет записано в аудит-лог с вашим именем.</div>
+  <div class="modal-desc">
+    Конверт <strong>{{ envelope.number }}</strong> будет переведен из «Запечатан» в «Черновик».
+  </div>
+  <form hx-post="/ui/envelopes/{{ envelope.id }}/unseal"
+        hx-target="#envelope-card" hx-swap="outerHTML">
+    <div class="modal-field">
+      <label>Причина распечатки *</label>
+      <input class="modal-input" type="text" name="reason" required
+             placeholder="Например: ошибочно добавлен документ">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-cancel"
+              onclick="document.getElementById('unseal-modal-{{ envelope.id }}').style.display='none';
+                       document.getElementById('unseal-panel-{{ envelope.id }}').style.display='flex'">
+        Отмена
+      </button>
+      <button type="submit" class="btn btn-danger"><i data-lucide="unlock"></i> Подтвердить</button>
+    </div>
+  </form>
+</div>
+</div>
+{% endif %}
 
 <!-- Seal modal -->
 {% if env_status == 'draft' %}

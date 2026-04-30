@@ -33,3 +33,7 @@ class SealRequest(BaseModel):
     origin_branch_id: uuid.UUID
     destination_branch_id: uuid.UUID | None = None
     notes: str | None = None
+
+
+class UnsealRequest(BaseModel):
+    reason: str

@@ -1,0 +1,105 @@
+<div class="list-page" id="envelopes-list-page">
+
+  <form class="filter-bar" hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML">
+    <span class="filter-label">Фильтр</span>
+    <select class="filter-select" name="status">
+      <option value="">Все статусы</option>
+      {% for key, label in status_labels.items() %}
+      <option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input class="filter-input" type="date" name="date_from" value="{{ filters.date_from }}">
+    <input class="filter-input" type="date" name="date_to" value="{{ filters.date_to }}">
+    <select class="filter-select" name="branch_id">
+      <option value="">Все филиалы</option>
+      {% for b in branches %}
+      <option value="{{ b.id }}" {% if filters.branch_id == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+      {% endfor %}
+    </select>
+    <input class="filter-input" type="text" name="search" value="{{ filters.search }}"
+           placeholder="№ конверта / ШК" style="width:150px">
+    <button class="btn-primary" type="submit">
+      <i data-lucide="search"></i> Найти
+    </button>
+    <button class="btn-secondary" type="button"
+            hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML">
+      <i data-lucide="x"></i> Сброс
+    </button>
+  </form>
+
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>№ конверта</th>
+          <th>Статус</th>
+          <th>Документов</th>
+          <th>Оператор</th>
+          <th>Создан</th>
+          <th>Филиал-отправитель</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for env in envelopes %}
+        {% set st = env.status.value if env.status.value is defined else env.status %}
+        <tr class="{% if st == 'verified_with_discrepancy' %}row-discrepancy{% endif %}">
+          <td style="font-weight:700;color:#1b2848;font-family:monospace;font-size:12px">{{ env.number }}</td>
+          <td>
+            {% if st == 'verified' %}
+              <span class="status-pill sp-verified"><i data-lucide="circle-check"></i> Верифицирован</span>
+            {% elif st == 'verified_with_discrepancy' %}
+              <span class="status-pill sp-discrepancy"><i data-lucide="triangle-alert"></i> Расхождение</span>
+            {% elif st == 'sealed' %}
+              <span class="status-pill sp-sealed"><i data-lucide="lock"></i> Запечатан</span>
+            {% else %}
+              <span class="status-pill sp-draft"><i data-lucide="pencil"></i> Черновик</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ env.document_count }}
+            {% if env.missing_count %}
+              <span style="color:#cc0c00;font-size:11px;font-weight:700">−{{ env.missing_count }}</span>
+            {% endif %}
+          </td>
+          <td style="color:#556">{{ env.created_by }}</td>
+          <td style="color:#8895a7">{{ env.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+          <td style="color:#556">{{ env.origin_branch_name or "—" }}</td>
+          <td>
+            <button class="table-link" type="button"
+                    hx-get="/ui/envelopes/{{ env.id }}/card"
+                    hx-target="#main-area" hx-swap="innerHTML">
+              Открыть <i data-lucide="arrow-right"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;color:#8895a7;padding:24px">Конверты не найдены</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="table-footer">
+      <span>Показано {{ envelopes | length }} из {{ total }}</span>
+      {% set pages = ((total + page_size - 1) // page_size) %}
+      <div class="pagination">
+        {% if page > 1 %}
+        <button class="page-btn" type="button"
+                hx-get="/ui/envelopes?page={{ page - 1 }}&status={{ filters.status }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&branch_id={{ filters.branch_id }}&search={{ filters.search }}"
+                hx-target="#main-area" hx-swap="innerHTML">
+          <i data-lucide="chevron-left"></i>
+        </button>
+        {% endif %}
+        <span class="page-btn current">{{ page }}</span>
+        {% if page < pages %}
+        <button class="page-btn" type="button"
+                hx-get="/ui/envelopes?page={{ page + 1 }}&status={{ filters.status }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&branch_id={{ filters.branch_id }}&search={{ filters.search }}"
+                hx-target="#main-area" hx-swap="innerHTML">
+          <i data-lucide="chevron-right"></i>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>if(typeof lucide!=='undefined')lucide.createIcons();</script>

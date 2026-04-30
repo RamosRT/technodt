@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     env: Literal["development", "test", "production"] = "development"
-    admin_token: str = Field(min_length=8)
+    admin_token: str = Field(default="")
 
     database_url: str
     database_url_test: str | None = None
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     odata_timeout_seconds: int = 60
 
     envelope_bc_prefix: str = ""
+    bootstrap_admin: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

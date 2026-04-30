@@ -58,7 +58,7 @@ function normalizeBarcodeForCompare(value) {
   return value.toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
-function dispatch(barcode) {
+async function dispatch(barcode) {
   if (App.mode === "idle") return;
   if (App.mode === "verify") {
     if (App.awaitingEnvBC) {
@@ -92,6 +92,7 @@ function dispatch(barcode) {
       showToast("ШК конверта распознан — заполните поля и запечатайте", "info");
       return;
     }
+    if (await openDraftEnvelopeForPacking(barcode)) return;
     addDocToEnvelope(barcode);
   }
 }
@@ -104,6 +105,46 @@ function addDocToEnvelope(barcode) {
     swap: "outerHTML",
     values: { barcode },
   });
+}
+
+async function openDraftEnvelopeForPacking(barcode) {
+  let response;
+  try {
+    response = await fetch(`/api/envelopes/by-barcode/${encodeURIComponent(barcode)}`, {
+      headers: { "Accept": "application/json" },
+    });
+  } catch (_) {
+    return false;
+  }
+
+  if (response.status === 404) return false;
+
+  let envelope;
+  try {
+    envelope = await response.json();
+  } catch (_) {
+    showToast("Не удалось прочитать данные конверта", "error");
+    return true;
+  }
+
+  if (!response.ok) {
+    showToast(envelope.detail || "Не удалось открыть конверт", "error");
+    return true;
+  }
+
+  if (envelope.id === App.envelopeId) return false;
+
+  if (envelope.status !== "draft") {
+    showToast("Продолжить заполнение можно только для конверта в статусе «Черновик»", "error");
+    return true;
+  }
+
+  htmx.ajax("GET", `/ui/envelopes/${envelope.id}/card`, {
+    target: document.getElementById("envelope-card") ? "#envelope-card" : "#main-area",
+    swap: document.getElementById("envelope-card") ? "outerHTML" : "innerHTML",
+  });
+  showToast(`Открыт черновик ${envelope.number}`, "info");
+  return true;
 }
 
 // ─── Verify mode ────────────────────────────────────────────────
@@ -155,7 +196,7 @@ function updateModeBar() {
   } else if (App.mode === "register") {
     bar.classList.add("mode-register");
     bar.textContent = "Регистрация";
-    hint && (hint.textContent = "Сканируйте документы или введите ШК вручную");
+    hint && (hint.textContent = "Сканируйте документы или ШК черновика");
   } else if (App.mode === "verify") {
     bar.classList.add("mode-verify");
     if (App.awaitingEnvBC) {

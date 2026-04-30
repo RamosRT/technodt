@@ -1,14 +1,15 @@
 import uuid
+from datetime import date
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_operator
+from app.auth import require_admin, require_operator
 from app.db import get_session
 from app.deps import get_one_c_client
 from app.exceptions import AppError
 from app.models import EnvelopeStatus
 from app.schemas.document import DocumentAddRequest, DocumentOut
-from app.schemas.envelope import EnvelopeOut, SealRequest
+from app.schemas.envelope import EnvelopeOut, SealRequest, UnsealRequest
 from app.services import envelopes as svc
 from app.services import printing
 from app.services.odata import OneCClient
@@ -24,6 +25,33 @@ async def create_envelope(
     env = await svc.create_envelope(session, operator=operator)
     await session.commit()
     return await svc.get_by_id(session, env.id)
+
+
+@router.get("")
+async def list_envelopes(
+    status_filter: str | None = Query(default=None, alias="status"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    branch_id: str | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    _operator: str = require_operator(),
+    session: AsyncSession = Depends(get_session),
+):
+    status_value = EnvelopeStatus(status_filter) if status_filter else None
+    branch_uuid = uuid.UUID(branch_id) if branch_id else None
+    items, total = await svc.list_envelopes(
+        session,
+        status=status_value,
+        date_from=date_from,
+        date_to=date_to,
+        branch_id=branch_uuid,
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/by-barcode/{barcode}", response_model=EnvelopeOut)
@@ -84,6 +112,20 @@ async def seal_envelope(
     return await svc.get_by_id(session, sealed.id)
 
 
+@router.post("/{envelope_id}/unseal", response_model=EnvelopeOut)
+async def unseal_envelope(
+    envelope_id: uuid.UUID,
+    body: UnsealRequest,
+    _admin: None = require_admin(),
+    operator: str = require_operator(),
+    session: AsyncSession = Depends(get_session),
+):
+    envelope = await svc.get_by_id(session, envelope_id)
+    unsealed = await svc.unseal(session, envelope=envelope, reason=body.reason, operator=operator)
+    await session.commit()
+    return await svc.get_by_id(session, unsealed.id)
+
+
 @router.get("/{envelope_id}/print/inventory")
 async def print_inventory(
     envelope_id: uuid.UUID,
@@ -95,7 +137,7 @@ async def print_inventory(
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

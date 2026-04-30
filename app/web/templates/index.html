@@ -2,7 +2,6 @@
 {% block content %}
 
 {% if not operator %}
-<!-- ── Operator login ────────────────────────────────────────── -->
 <div class="operator-prompt">
   <h2>Вход в систему</h2>
   <p>Введите ваше имя, чтобы продолжить</p>
@@ -15,44 +14,24 @@
     <button class="btn btn-primary" style="width:100%">Войти</button>
   </form>
 </div>
-
 {% else %}
-<!-- ── Mode selector ─────────────────────────────────────────── -->
-<div class="mode-selector">
-  <div class="mode-card" onclick="selectMode('register')">
-    <span class="mode-icon">📬</span>
-    <h3>Регистрация</h3>
-    <p>Создать конверт и добавить документы</p>
-  </div>
-  <div class="mode-card" onclick="selectMode('verify')">
-    <span class="mode-icon">🔍</span>
-    <h3>Верификация</h3>
-    <p>Проверить документы при получении</p>
-  </div>
-  <div class="mode-card" onclick="selectMode('admin')">
-    <span class="mode-icon">⚙️</span>
-    <h3>Справочники</h3>
-    <p>Управление филиалами и подписантами</p>
+<div class="welcome-panel">
+  <h2>Регистрация и проверка конвертов</h2>
+  <div class="quick-actions">
+    <button class="btn btn-primary" hx-post="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('register')"><i data-lucide="package-plus"></i> Новый конверт</button>
+    <button class="btn btn-dark" hx-get="/ui/verify" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('verify')"><i data-lucide="scan-line"></i> Верификация</button>
+    <button class="btn btn-ghost" hx-get="/ui/dictionaries" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle')"><i data-lucide="book-open"></i> Справочники</button>
+    {% if is_admin %}
+    <button class="btn btn-ghost" hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle')"><i data-lucide="archive"></i> Конверты</button>
+    <button class="btn btn-ghost" hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle')"><i data-lucide="file-text"></i> Документы</button>
+    {% endif %}
   </div>
 </div>
-
-<div id="mode-area"></div>
-<script>
-function selectMode(mode) {
-  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  if (mode === 'register') {
-    setMode('register');
-    htmx.ajax('POST', '/ui/envelopes', {target: '#mode-area', swap: 'innerHTML'});
-  } else if (mode === 'verify') {
-    setMode('verify');
-    htmx.ajax('GET', '/ui/verify', {target: '#mode-area', swap: 'innerHTML'});
-  } else if (mode === 'admin') {
-    setMode('idle');
-    htmx.ajax('GET', '/ui/admin', {target: '#mode-area', swap: 'innerHTML'});
-  }
-}
-</script>
 {% endif %}
 
 {% endblock %}

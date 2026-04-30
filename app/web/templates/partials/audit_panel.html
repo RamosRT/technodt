@@ -1,0 +1,30 @@
+<form class="audit-filter-bar" hx-get="/ui/audit" hx-target="#audit-panel" hx-swap="innerHTML">
+  <input class="form-control" type="date" name="date_from" value="{{ audit_filters.date_from }}">
+  <input class="form-control" type="date" name="date_to" value="{{ audit_filters.date_to }}">
+  <select class="form-control" name="event">
+    <option value="">Все события</option>
+    {% for ev_name in ["create", "add_doc", "remove_doc", "seal", "unseal", "verify_start", "verify_scan", "verify_finish"] %}
+    <option value="{{ ev_name }}" {% if audit_filters.event == ev_name %}selected{% endif %}>{{ ev_name }}</option>
+    {% endfor %}
+  </select>
+  <input class="form-control" name="actor" value="{{ audit_filters.actor }}" placeholder="Оператор">
+  <input class="form-control" name="envelope" value="{{ audit_filters.envelope }}" placeholder="Конверт">
+  <button class="btn btn-dark btn-sm" type="submit"><i data-lucide="search"></i></button>
+</form>
+
+<div class="audit-timeline admin-audit">
+  {% for ev in audit_events %}
+  <div class="audit-event">
+    <span class="audit-dot audit-dot-{{ ev.event }}"></span>
+    <div>
+      <div class="audit-event-title">{{ ev.event }}</div>
+      <div class="audit-event-meta">{{ ev.actor }} · {{ ev.at.strftime('%d.%m.%Y %H:%M') }}</div>
+      {% if ev.payload %}
+      <div class="audit-detail">{{ ev.payload }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">Событий не найдено</div>
+  {% endfor %}
+</div>

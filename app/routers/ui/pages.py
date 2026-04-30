@@ -1,21 +1,26 @@
 """UI routes — renders Jinja2 templates for the single-page HTMX frontend."""
 import uuid
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Cookie, Depends, Form, Request
+from fastapi import APIRouter, Cookie, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import get_is_admin
+from app.config import get_settings
 from app.db import get_session
 from app.deps import get_one_c_client
 from app.exceptions import AppError
 import app.services.envelopes as env_svc
 import app.services.dictionaries as dict_svc
 import app.services.verify as verify_svc
-from app.models import Branch, EnvelopeStatus, Signer
+from app.models import AuditLog, Branch, Envelope, EnvelopeStatus, Signer
+from app.services import documents as doc_svc
+from app.services import operators as op_svc
 from app.services.odata import OneCClient
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
@@ -33,6 +38,22 @@ router = APIRouter(tags=["ui"])
 
 def _operator(operator_name: str | None = Cookie(default=None)) -> str | None:
     return unquote(operator_name) if operator_name else None
+
+
+def _optional_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(value)
+
+
+def _optional_status(value: str | EnvelopeStatus | None) -> EnvelopeStatus | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, EnvelopeStatus):
+        return value
+    return EnvelopeStatus(value)
 
 
 async def _verify_meta(session: AsyncSession, envelope) -> dict:
@@ -71,19 +92,109 @@ async def _verify_meta(session: AsyncSession, envelope) -> dict:
     }
 
 
+async def _audit_events(session: AsyncSession, envelope_id: uuid.UUID) -> list[AuditLog]:
+    return list(
+        (
+            await session.execute(
+                select(AuditLog)
+                .where(AuditLog.envelope_id == envelope_id)
+                .order_by(AuditLog.at.desc())
+            )
+        ).scalars().all()
+    )
+
+
+async def _audit_screen_context(
+    session: AsyncSession,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    event: str | None = None,
+    actor: str | None = None,
+    envelope: str | None = None,
+) -> dict:
+    from datetime import datetime, time, timezone
+    from sqlalchemy import or_
+
+    stmt = select(AuditLog).outerjoin(Envelope, AuditLog.envelope_id == Envelope.id)
+    if date_from:
+        stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+    if date_to:
+        stmt = stmt.where(AuditLog.at <= datetime.combine(date_to, time.max, tzinfo=timezone.utc))
+    if event:
+        stmt = stmt.where(AuditLog.event == event)
+    if actor:
+        stmt = stmt.where(AuditLog.actor.ilike(f"%{actor.strip()}%"))
+    if envelope:
+        term = f"%{envelope.strip()}%"
+        stmt = stmt.where(or_(Envelope.number.ilike(term), Envelope.barcode.ilike(term)))
+    events = list((await session.execute(stmt.order_by(AuditLog.at.desc()).limit(50))).scalars().all())
+    return {
+        "audit_events": events,
+        "audit_filters": {
+            "date_from": date_from.isoformat() if date_from else "",
+            "date_to": date_to.isoformat() if date_to else "",
+            "event": event or "",
+            "actor": actor or "",
+            "envelope": envelope or "",
+        },
+    }
+
+
+async def _envelope_card_context(
+    session: AsyncSession,
+    *,
+    envelope,
+    operator: str | None,
+    is_admin: bool,
+) -> dict:
+    branches = await dict_svc.list_branches(session, only_active=True)
+    signers = await dict_svc.list_signers(session, only_active=True)
+    return {
+        "envelope": envelope,
+        "documents": envelope.documents,
+        "branches": branches,
+        "signers": signers,
+        "status_labels": STATUS_LABELS,
+        "operator": operator,
+        "is_admin": is_admin,
+        "audit_events": await _audit_events(session, envelope.id),
+    }
+
+
 # ─── Root ────────────────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request, operator: str | None = Depends(_operator)):
-    return templates.TemplateResponse(request, "index.html", {"operator": operator})
+async def index(
+    request: Request,
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    return templates.TemplateResponse(request, "index.html", {"operator": operator, "is_admin": is_admin})
 
 
 # ─── Operator ────────────────────────────────────────────────────────────────
 
 @router.post("/ui/operator", response_class=HTMLResponse)
-async def set_operator(request: Request, operator_name: str = Form(...)):
-    response = templates.TemplateResponse(request, "index.html", {"operator": operator_name})
-    response.set_cookie("operator_name", quote(operator_name), httponly=True, samesite="lax")
+async def set_operator(
+    request: Request,
+    operator_name: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    name = operator_name.strip()
+    settings = get_settings()
+    op = await op_svc.ensure_operator(
+        session,
+        name,
+        bootstrap=bool(settings.bootstrap_admin) and name == settings.bootstrap_admin,
+    )
+    await session.commit()
+    response = templates.TemplateResponse(
+        request,
+        "index.html",
+        {"operator": name, "is_admin": op.is_admin and op.is_active},
+    )
+    response.set_cookie("operator_name", quote(name), httponly=True, samesite="lax")
     return response
 
 
@@ -101,6 +212,7 @@ async def ui_create_envelope(
     request: Request,
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
@@ -108,17 +220,77 @@ async def ui_create_envelope(
     envelope = await env_svc.create_envelope(session, operator=operator)
     await session.commit()
     envelope = await env_svc.get_by_id(session, envelope.id)
-    branches = await dict_svc.list_branches(session, only_active=True)
-    signers = await dict_svc.list_signers(session, only_active=True)
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
 
-    return templates.TemplateResponse(request, "partials/envelope_card.html", {
-        "envelope": envelope,
-        # New envelope is always empty; avoid async lazy-load in template context.
-        "documents": [],
-        "branches": branches,
-        "signers": signers,
-        "status_labels": STATUS_LABELS,
-    })
+
+@router.get("/ui/envelopes", response_class=HTMLResponse)
+async def ui_envelopes_list(
+    request: Request,
+    status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    branch_id: str | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    status_value = _optional_status(status)
+    branch_uuid = _optional_uuid(branch_id)
+    envelopes, total = await env_svc.list_envelopes(
+        session,
+        status=status_value,
+        date_from=date_from,
+        date_to=date_to,
+        branch_id=branch_uuid,
+        search=search,
+        page=page,
+    )
+    branches = await dict_svc.list_branches(session, only_active=True)
+    return templates.TemplateResponse(
+        request,
+        "partials/envelopes_list.html",
+        {
+            "operator": operator,
+            "is_admin": is_admin,
+            "envelopes": envelopes,
+            "total": total,
+            "page": page,
+            "page_size": 25,
+            "branches": branches,
+            "filters": {
+                "status": status_value.value if status_value else "",
+                "date_from": date_from.isoformat() if date_from else "",
+                "date_to": date_to.isoformat() if date_to else "",
+                "branch_id": str(branch_uuid) if branch_uuid else "",
+                "search": search or "",
+            },
+            "status_labels": STATUS_LABELS,
+        },
+    )
+
+
+@router.get("/ui/envelopes/{envelope_id}/card", response_class=HTMLResponse)
+async def ui_envelope_card(
+    request: Request,
+    envelope_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    envelope = await env_svc.get_by_id(session, envelope_id)
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
 
 
 # ─── Add document ─────────────────────────────────────────────────────────────
@@ -131,6 +303,7 @@ async def ui_add_document(
     session: AsyncSession = Depends(get_session),
     one_c: OneCClient = Depends(get_one_c_client),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
@@ -142,15 +315,11 @@ async def ui_add_document(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    branches = await dict_svc.list_branches(session, only_active=True)
-    signers = await dict_svc.list_signers(session, only_active=True)
-    return templates.TemplateResponse(request, "partials/envelope_card.html", {
-        "envelope": envelope,
-        "documents": envelope.documents,
-        "branches": branches,
-        "signers": signers,
-        "status_labels": STATUS_LABELS,
-    })
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
 
 
 # ─── Remove document ──────────────────────────────────────────────────────────
@@ -162,6 +331,7 @@ async def ui_remove_document(
     doc_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
@@ -173,15 +343,11 @@ async def ui_remove_document(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    branches = await dict_svc.list_branches(session, only_active=True)
-    signers = await dict_svc.list_signers(session, only_active=True)
-    return templates.TemplateResponse(request, "partials/envelope_card.html", {
-        "envelope": envelope,
-        "documents": envelope.documents,
-        "branches": branches,
-        "signers": signers,
-        "status_labels": STATUS_LABELS,
-    })
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
 
 
 # ─── Seal ─────────────────────────────────────────────────────────────────────
@@ -197,6 +363,7 @@ async def ui_seal_envelope(
     notes: str | None = Form(default=None),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
@@ -217,16 +384,88 @@ async def ui_seal_envelope(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
-    branches = await dict_svc.list_branches(session, only_active=True)
-    signers = await dict_svc.list_signers(session, only_active=True)
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
 
-    return templates.TemplateResponse(request, "partials/envelope_card.html", {
-        "envelope": envelope,
-        "documents": envelope.documents,
-        "branches": branches,
-        "signers": signers,
-        "status_labels": STATUS_LABELS,
-    })
+
+@router.post("/ui/envelopes/{envelope_id}/unseal", response_class=HTMLResponse)
+async def ui_unseal_envelope(
+    request: Request,
+    envelope_id: uuid.UUID,
+    reason: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    try:
+        envelope = await env_svc.get_by_id(session, envelope_id)
+        await env_svc.unseal(session, envelope=envelope, reason=reason, operator=operator or "unknown")
+        await session.commit()
+        envelope = await env_svc.get_by_id(session, envelope_id)
+    except AppError as e:
+        return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
+    return templates.TemplateResponse(
+        request,
+        "partials/envelope_card.html",
+        await _envelope_card_context(session, envelope=envelope, operator=operator, is_admin=is_admin),
+    )
+
+
+@router.get("/ui/documents", response_class=HTMLResponse)
+async def ui_documents_list(
+    request: Request,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    doc_kind: str | None = None,
+    status: str | None = None,
+    branch_id: str | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    branch_uuid = _optional_uuid(branch_id)
+    documents, total, summary = await doc_svc.list_documents(
+        session,
+        date_from=date_from,
+        date_to=date_to,
+        doc_kind=doc_kind,
+        status=status,
+        branch_id=branch_uuid,
+        search=search,
+        page=page,
+    )
+    branches = await dict_svc.list_branches(session, only_active=True)
+    return templates.TemplateResponse(
+        request,
+        "partials/documents_list.html",
+        {
+            "operator": operator,
+            "is_admin": is_admin,
+            "documents": documents,
+            "total": total,
+            "summary": summary,
+            "page": page,
+            "page_size": 50,
+            "branches": branches,
+            "filters": {
+                "date_from": date_from.isoformat() if date_from else "",
+                "date_to": date_to.isoformat() if date_to else "",
+                "doc_kind": doc_kind or "",
+                "status": status or "",
+                "branch_id": str(branch_uuid) if branch_uuid else "",
+                "search": search or "",
+            },
+        },
+    )
 
 
 # ─── Verify mode ──────────────────────────────────────────────────────────────
@@ -338,16 +577,159 @@ async def ui_verify_finish(
 
 # ─── Admin / dictionaries ─────────────────────────────────────────────────────
 
-async def _admin_ctx(session: AsyncSession) -> dict:
+async def _admin_ctx(session: AsyncSession, *, is_admin: bool = False) -> dict:
     return {
         "branches": await dict_svc.list_branches(session, only_active=True),
         "signers": await dict_svc.list_signers(session, only_active=True),
+        "is_admin": is_admin,
     }
 
 
+@router.get("/ui/dictionaries", response_class=HTMLResponse)
+async def ui_dictionaries(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    is_admin: bool = Depends(get_is_admin),
+):
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+
+
 @router.get("/ui/admin", response_class=HTMLResponse)
-async def ui_admin(request: Request, session: AsyncSession = Depends(get_session)):
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+async def ui_admin(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    operators = await op_svc.list_operators(session)
+    audit_ctx = await _audit_screen_context(session)
+    return templates.TemplateResponse(
+        request,
+        "partials/admin_v2.html",
+        {
+            "operator": operator,
+            "is_admin": is_admin,
+            "operators": operators,
+            "show_reset": get_settings().env != "production",
+            **audit_ctx,
+        },
+    )
+
+
+async def _admin_v2_response(
+    request: Request,
+    session: AsyncSession,
+    *,
+    operator: str | None,
+    is_admin: bool,
+):
+    operators = await op_svc.list_operators(session)
+    audit_ctx = await _audit_screen_context(session)
+    return templates.TemplateResponse(
+        request,
+        "partials/admin_v2.html",
+        {
+            "operator": operator,
+            "is_admin": is_admin,
+            "operators": operators,
+            "show_reset": get_settings().env != "production",
+            **audit_ctx,
+        },
+    )
+
+
+@router.get("/ui/audit", response_class=HTMLResponse)
+async def ui_audit(
+    request: Request,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    event: str | None = None,
+    actor: str | None = None,
+    envelope: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    return templates.TemplateResponse(
+        request,
+        "partials/audit_panel.html",
+        await _audit_screen_context(
+            session,
+            date_from=date_from,
+            date_to=date_to,
+            event=event or None,
+            actor=actor or None,
+            envelope=envelope or None,
+        ),
+    )
+
+
+@router.post("/ui/operators", response_class=HTMLResponse)
+async def ui_create_operator(
+    request: Request,
+    username: str = Form(...),
+    is_admin_form: str = Form(default="", alias="is_admin"),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    await op_svc.ensure_operator(session, username, bootstrap=(is_admin_form == "true"))
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.patch("/ui/operators/{operator_id}", response_class=HTMLResponse)
+async def ui_patch_operator(
+    request: Request,
+    operator_id: uuid.UUID,
+    is_admin_form: str = Form(default="", alias="is_admin"),
+    is_active: str = Form(default=""),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    target = (
+        await session.execute(select(op_svc.Operator).where(op_svc.Operator.id == operator_id))
+    ).scalar_one_or_none()
+    if target and target.username == operator and is_active == "false":
+        return HTMLResponse('<div class="alert alert-error">Нельзя деактивировать себя</div>', status_code=400)
+    await op_svc.patch_operator(
+        session,
+        operator_id=operator_id,
+        is_admin=True if is_admin_form == "true" else (False if is_admin_form == "false" else None),
+        is_active=True if is_active == "true" else (False if is_active == "false" else None),
+    )
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.post("/ui/admin/reset", response_class=HTMLResponse)
+async def ui_admin_reset(
+    confirm: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    if get_settings().env == "production":
+        return HTMLResponse('<div class="alert alert-error">Недоступно в production</div>', status_code=404)
+    if confirm != "I_KNOW_WHAT_I_DO":
+        return HTMLResponse('<div class="alert alert-error">Неверное кодовое слово</div>', status_code=400)
+    for tbl in ("audit_log", "envelope_documents", "envelopes", "signers", "branches"):
+        await session.execute(text(f"TRUNCATE TABLE {tbl} RESTART IDENTITY CASCADE"))
+    await session.commit()
+    return HTMLResponse(
+        '<div class="card text-center"><h2>База данных очищена</h2>'
+        '<p class="text-muted">Страница обновится автоматически.</p>'
+        '<script>setTimeout(()=>location.reload(),1800)</script></div>'
+    )
 
 
 @router.post("/ui/admin/branches", response_class=HTMLResponse)
@@ -356,10 +738,13 @@ async def ui_create_branch(
     name: str = Form(...),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.create_branch(session, name=name, operator=operator or "ui")
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
 
 
 @router.patch("/ui/admin/branches/{branch_id}", response_class=HTMLResponse)
@@ -369,10 +754,13 @@ async def ui_patch_branch(
     name: str = Form(...),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.patch_branch(session, branch_id=branch_id, name=name, is_active=None, operator=operator or "ui")
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
 
 
 @router.post("/ui/admin/branches/{branch_id}/deactivate", response_class=HTMLResponse)
@@ -381,12 +769,15 @@ async def ui_deactivate_branch(
     branch_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.patch_branch(
         session, branch_id=branch_id, name=None, is_active=False, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
 
 
 @router.post("/ui/admin/signers", response_class=HTMLResponse)
@@ -396,12 +787,15 @@ async def ui_create_signer(
     first_name: str = Form(...),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.create_signer(
         session, last_name=last_name, first_name=first_name, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
 
 
 @router.patch("/ui/admin/signers/{signer_id}", response_class=HTMLResponse)
@@ -412,13 +806,16 @@ async def ui_patch_signer(
     first_name: str = Form(...),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.patch_signer(
         session, signer_id=signer_id, last_name=last_name, first_name=first_name,
         is_active=None, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
 
 
 @router.post("/ui/admin/signers/{signer_id}/deactivate", response_class=HTMLResponse)
@@ -427,9 +824,12 @@ async def ui_deactivate_signer(
     signer_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
 ):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.patch_signer(
         session, signer_id=signer_id, last_name=None, first_name=None, is_active=False, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session))
+    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))

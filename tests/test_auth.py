@@ -3,6 +3,7 @@ from fastapi import APIRouter
 
 from app.auth import require_admin, require_operator
 from app.main import app
+from app.services.operators import ensure_operator
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +47,9 @@ async def test_admin_required_returns_401_without_header(client, admin_token):
 
 
 @pytest.mark.asyncio
-async def test_admin_required_passes_with_correct_header(client, admin_token):
-    r = await client.get("/_probe/admin", headers={"X-Admin-Token": admin_token})
+async def test_admin_required_passes_with_admin_cookie(client, db_session):
+    await ensure_operator(db_session, "Admin", bootstrap=True)
+    await db_session.commit()
+    client.cookies.set("operator_name", "Admin")
+    r = await client.get("/_probe/admin")
     assert r.status_code == 200
