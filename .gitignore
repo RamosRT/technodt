@@ -41,3 +41,5 @@ tmp/
 #agents data
 .agents/
 .claude/
+
+.worktrees/
