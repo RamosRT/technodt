@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import require_operator
 from app.db import get_session
 from app.deps import get_one_c_client
+from app.exceptions import AppError
+from app.models import EnvelopeStatus
 from app.schemas.document import DocumentAddRequest, DocumentOut
 from app.schemas.envelope import EnvelopeOut, SealRequest
 from app.services import envelopes as svc
@@ -93,7 +95,7 @@ async def print_inventory(
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
@@ -119,5 +121,23 @@ async def print_label(
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+        headers={"Content-Disposition": f'inline; filename="{filename_base}.pdf"'},
+    )
+
+
+@router.get("/{envelope_id}/print/discrepancy-act")
+async def print_discrepancy_act(
+    envelope_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    envelope = await svc.get_by_id(session, envelope_id)
+    if envelope.status is not EnvelopeStatus.verified_with_discrepancy:
+        raise AppError("Акт о расхождениях доступен только для конвертов с расхождением", status_code=409)
+
+    pdf = await printing.render_discrepancy_act_pdf(session, envelope_id)
+    filename = f"discrepancy_act_{envelope.number.replace('ТА-', 'TA-')}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

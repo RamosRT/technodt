@@ -1,6 +1,9 @@
 {# Shown when entering verify mode #}
 <div class="card">
   <div class="card-title">Верификация конверта</div>
+  {% if error %}
+  <div class="alert alert-error" style="margin-bottom:12px">{{ error }}</div>
+  {% endif %}
   <p style="color:var(--text-muted);margin-bottom:20px">
     Отсканируйте штрихкод конверта или введите его вручную:
   </p>

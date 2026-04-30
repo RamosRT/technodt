@@ -1,6 +1,6 @@
 {# Rendered after envelope is created (register mode) #}
 <div id="envelope-card">
-<script>onEnvelopeLoaded('{{ envelope.id }}', '{{ envelope.barcode }}');</script>
+<script>onEnvelopeLoaded('{{ envelope.id }}', '{{ envelope.barcode }}', {{ documents|length }});</script>
 {% set env_status = envelope.status.value if envelope.status.value is defined else envelope.status %}
 
 <div class="card">
@@ -32,7 +32,7 @@
   });
   function dispatchManual() {
     const v = document.getElementById('manual-bc').value.trim();
-    if (v) { addDocToEnvelope(v); document.getElementById('manual-bc').value = ''; }
+    if (v) { dispatch(v); document.getElementById('manual-bc').value = ''; }
   }
   </script>
   {% endif %}
@@ -92,15 +92,6 @@
       <div class="form-row">
         <label>Филиал-отправитель</label>
         <select name="origin_branch_id" class="form-control" required>
-          <option value="">— выберите —</option>
-          {% for b in branches %}
-          <option value="{{ b.id }}">{{ b.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Филиал-получатель</label>
-        <select name="destination_branch_id" class="form-control" required>
           <option value="">— выберите —</option>
           {% for b in branches %}
           <option value="{{ b.id }}">{{ b.name }}</option>

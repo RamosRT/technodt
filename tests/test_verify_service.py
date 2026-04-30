@@ -41,7 +41,7 @@ async def _make_sealed(db_session, doc_guids):
     db_session.add_all([b1, b2, s1, s2]); await db_session.flush()
     await env_svc.seal(db_session, envelope=env,
                        signer_sender_id=s1.id, signer_receiver_id=s2.id,
-                       origin_branch_id=b1.id, destination_branch_id=b2.id, notes=None, operator="A")
+                       origin_branch_id=b1.id, destination_branch_id=None, notes=None, operator="A")
     await db_session.commit()
     return env
 

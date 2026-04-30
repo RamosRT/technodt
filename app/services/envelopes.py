@@ -187,7 +187,7 @@ async def seal(
     signer_sender_id: uuid.UUID,
     signer_receiver_id: uuid.UUID,
     origin_branch_id: uuid.UUID,
-    destination_branch_id: uuid.UUID,
+    destination_branch_id: uuid.UUID | None,
     notes: str | None,
     operator: str,
 ) -> Envelope:
@@ -206,12 +206,15 @@ async def seal(
     if doc_count == 0:
         raise InvalidSealPayload("В конверте нет ни одного документа")
 
+    branch_ids = [origin_branch_id]
+    if destination_branch_id is not None:
+        branch_ids.append(destination_branch_id)
     branches = (
         await session.execute(
-            select(Branch).where(Branch.id.in_([origin_branch_id, destination_branch_id]))
+            select(Branch).where(Branch.id.in_(branch_ids))
         )
     ).scalars().all()
-    if len(branches) != 2 or any(not b.is_active for b in branches):
+    if len(branches) != len(set(branch_ids)) or any(not b.is_active for b in branches):
         raise InvalidSealPayload("Указан несуществующий или неактивный филиал")
 
     signers = (
@@ -236,6 +239,9 @@ async def seal(
         envelope_id=envelope.id,
         event="seal",
         actor=operator,
-        payload={"origin": str(origin_branch_id), "destination": str(destination_branch_id)},
+        payload={
+            "origin": str(origin_branch_id),
+            "destination": str(destination_branch_id) if destination_branch_id else None,
+        },
     )
     return envelope

@@ -20,9 +20,6 @@
   origin_branch       BranchOut | None
     .name             str          "Головной офис"
 
-  destination_branch  BranchOut | None
-    .name             str          "Филиал Север"
-
   signer_sender       SignerOut | None
     .last_name        str
     .first_name       str
@@ -74,6 +71,12 @@
       padding-bottom: 4mm;
     }
 
+    .header-left {
+      display: flex;
+      align-items: center;
+      width: 44%;
+    }
+
     .header-title h1 {
       font-size: 13pt;
       font-weight: bold;
@@ -87,19 +90,19 @@
 
     /* Штрихкод конверта в правом верхнем углу */
     .header-barcode {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
       text-align: center;
+      padding-top: 6mm;
     }
 
     .header-barcode svg {
       display: block;
-      width: 45mm;
-      height: 14mm;
-    }
-
-    .header-barcode .bc-number {
-      font-size: 7pt;
-      margin-top: 1mm;
-      letter-spacing: 0.05em;
+      width: 90mm;
+      height: 28mm;
+      margin-right: -4mm;
     }
 
     /* ── Маршрут ────────────────────────────────────────── */
@@ -223,36 +226,26 @@
 <body>
 
 <div class="header">
-  <div class="header-title">
-    <h1>Опись вложений</h1>
-    <p>Конверт <strong>{{ envelope.number }}</strong></p>
-    <p>Дата запечатывания:
-      {% if envelope.sealed_at %}
-        {{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') }}
-      {% else %}—{% endif %}
-    </p>
-    <p>Оператор: {{ envelope.created_by }}</p>
+  <div class="header-left">
+    <div class="header-title">
+      <h1>Опись вложений</h1>
+      <p>Конверт <strong>{{ envelope.number }}</strong></p>
+      <p>Дата запечатывания:
+        {% if envelope.sealed_at %}
+          {{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') }}
+        {% else %}—{% endif %}
+      </p>
+      <p>Оператор: {{ envelope.created_by }}</p>
+      <p>Место отправления: <strong>{{ origin_branch.name if origin_branch else '—' }}</strong></p>
+    </div>
   </div>
   <div class="header-barcode">
     {# SVG штрихкода подставляется сервисом как строка в переменную barcode_svg #}
     {{ barcode_svg | safe }}
-    <div class="bc-number">{{ envelope.barcode }}</div>
   </div>
 </div>
 
 <div class="route-block">
-  <div class="route-cell">
-    <div class="cell-label">Филиал-отправитель</div>
-    <div class="cell-value">
-      {{ origin_branch.name if origin_branch else '—' }}
-    </div>
-  </div>
-  <div class="route-cell">
-    <div class="cell-label">Филиал-получатель</div>
-    <div class="cell-value">
-      {{ destination_branch.name if destination_branch else '—' }}
-    </div>
-  </div>
   {% if envelope.notes %}
   <div class="route-cell">
     <div class="cell-label">Примечания</div>

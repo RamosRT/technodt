@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <title>Акт о расхождениях {{ envelope.number }}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 15mm 15mm 20mm 20mm;
+    }
+
+    body {
+      font-family: "DejaVu Sans", Arial, sans-serif;
+      font-size: 9pt;
+      color: #000;
+    }
+
+    .header {
+      margin-bottom: 6mm;
+      border-bottom: 1px solid #000;
+      padding-bottom: 4mm;
+    }
+
+    .header h1 {
+      font-size: 14pt;
+      margin: 0 0 3mm;
+    }
+
+    .header p {
+      margin: 1mm 0;
+      font-size: 9pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4mm 0 6mm;
+    }
+
+    th {
+      background: #f0f0f0;
+      border: 1px solid #bbb;
+      padding: 2mm 2.5mm;
+      font-size: 8pt;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    td {
+      border: 1px solid #ccc;
+      padding: 1.5mm 2.5mm;
+      font-size: 8.5pt;
+      vertical-align: middle;
+    }
+
+    .col-num { width: 8mm; text-align: center; }
+    .col-date { width: 24mm; text-align: center; }
+    .col-status { width: 32mm; text-align: center; font-weight: bold; }
+    .status-missing { color: #b00020; }
+    .status-ok { color: #3b5f00; }
+
+    .totals {
+      margin-top: 2mm;
+      margin-bottom: 8mm;
+    }
+
+    .signatures {
+      display: flex;
+      gap: 10mm;
+      margin-top: 10mm;
+    }
+
+    .sig {
+      flex: 1;
+    }
+
+    .sig .line {
+      margin-top: 10mm;
+      border-top: 1px solid #777;
+      padding-top: 1mm;
+      font-size: 8pt;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>Акт о расхождениях</h1>
+  <p>Номер конверта: <strong>{{ envelope.number }}</strong></p>
+  <p>Дата запечатки: <strong>{{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') if envelope.sealed_at else '—' }}</strong></p>
+  <p>Время проверки: <strong>{{ envelope.verified_at.strftime('%d.%m.%Y %H:%M') if envelope.verified_at else '—' }}</strong></p>
+  <p>Оператор отправитель: <strong>{{ envelope.created_by or '—' }}</strong></p>
+  <p>Место отправки: <strong>{{ origin_branch.name if origin_branch else '—' }}</strong></p>
+  <p>Подписанты: <strong>{{ signer_sender.last_name ~ ' ' ~ signer_sender.first_name if signer_sender else '—' }}</strong> /
+     <strong>{{ signer_receiver.last_name ~ ' ' ~ signer_receiver.first_name if signer_receiver else '—' }}</strong></p>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th class="col-num">№</th>
+      <th>Вид документа</th>
+      <th>Номер</th>
+      <th class="col-date">Дата</th>
+      <th class="col-status">Статус проверки</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc in documents %}
+    <tr>
+      <td class="col-num">{{ loop.index }}</td>
+      <td>{{ doc.doc_kind }}</td>
+      <td>{{ doc.doc_number }}</td>
+      <td class="col-date">{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
+      <td class="col-status">
+        {% if doc.scanned_at_verification %}
+          <span class="status-ok">Получен</span>
+        {% else %}
+          <span class="status-missing">Не получен</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="totals">
+  Всего документов: <strong>{{ documents|length }}</strong><br>
+  Не получено: <strong>{{ documents|selectattr('scanned_at_verification', 'equalto', none)|list|length }}</strong>
+</div>
+
+<div class="signatures">
+  <div class="sig">
+    Ответственный за отправку
+    <div class="line">подпись / дата</div>
+  </div>
+  <div class="sig">
+    Ответственный за приемку
+    <div class="line">подпись / дата</div>
+  </div>
+</div>
+</body>
+</html>

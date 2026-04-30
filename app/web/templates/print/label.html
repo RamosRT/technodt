@@ -15,7 +15,7 @@
   <style>
     @page {
       size: 100mm 50mm;
-      margin: 3mm;
+      margin: 0;
     }
 
     * { box-sizing: border-box; }
@@ -24,8 +24,10 @@
       font-family: "DejaVu Sans", Arial, sans-serif;
       font-size: 8pt;
       color: #000;
-      width: 94mm;
-      height: 44mm;
+      margin: 0;
+      width: 100mm;
+      height: 50mm;
+      padding: 3mm;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -41,21 +43,19 @@
     }
 
     .barcode-wrap {
-      width: 90mm;
-      text-align: center;
+      width: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
     .barcode-wrap svg {
-      width: 90mm;
-      height: 22mm;
-    }
-
-    .barcode-digits {
-      font-size: 6pt;
-      font-family: monospace;
-      color: #444;
-      letter-spacing: 0.08em;
-      margin-top: 1mm;
+      display: block;
+      margin: 0;
+      width: auto;
+      max-width: 94mm;
+      height: 26mm;
+      transform: translateX(2mm);
     }
   </style>
 </head>
@@ -63,7 +63,6 @@
   <div class="env-number">{{ envelope.number }}</div>
   <div class="barcode-wrap">
     {{ barcode_svg | safe }}
-    <div class="barcode-digits">{{ envelope.barcode }}</div>
   </div>
 </body>
 </html>

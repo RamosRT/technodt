@@ -199,7 +199,7 @@ async def test_seal_happy(db_session):
     sealed = await svc.seal(
         db_session, envelope=env,
         signer_sender_id=s1.id, signer_receiver_id=s2.id,
-        origin_branch_id=b1.id, destination_branch_id=b2.id,
+        origin_branch_id=b1.id, destination_branch_id=None,
         notes="хрупкое",
         operator="A",
     )
@@ -219,7 +219,7 @@ async def test_seal_rejects_empty_envelope(db_session):
     with pytest.raises(InvalidSealPayload):
         await svc.seal(db_session, envelope=env,
                        signer_sender_id=s1.id, signer_receiver_id=s2.id,
-                       origin_branch_id=b1.id, destination_branch_id=b2.id,
+                       origin_branch_id=b1.id, destination_branch_id=None,
                        notes=None, operator="A")
 
 
@@ -237,7 +237,7 @@ async def test_seal_rejects_inactive_signer(db_session):
     with pytest.raises(InvalidSealPayload):
         await svc.seal(db_session, envelope=env,
                        signer_sender_id=s1.id, signer_receiver_id=s2.id,
-                       origin_branch_id=b1.id, destination_branch_id=b2.id,
+                       origin_branch_id=b1.id, destination_branch_id=None,
                        notes=None, operator="A")
 
 
@@ -251,5 +251,5 @@ async def test_seal_already_sealed_raises_not_draft(db_session):
     with pytest.raises(EnvelopeNotDraft):
         await svc.seal(db_session, envelope=env,
                        signer_sender_id=s1.id, signer_receiver_id=s2.id,
-                       origin_branch_id=b1.id, destination_branch_id=b2.id,
+                       origin_branch_id=b1.id, destination_branch_id=None,
                        notes=None, operator="A")

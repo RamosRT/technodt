@@ -1,17 +1,28 @@
 {# Active verification session #}
 <div id="verify-card">
-<script>onVerifyEnvelopeLoaded('{{ envelope.id }}');</script>
+<script>
+onVerifyEnvelopeLoaded('{{ envelope.id }}', '{{ envelope.barcode }}', {{ scanned_count }}, {{ documents|length }});
+requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
+</script>
 
 <div class="card">
   <div class="card-title">
     <span>{{ envelope.number }}</span>
     <span class="badge badge-sealed">Запечатан</span>
-    <span class="ml-auto text-muted font-mono">{{ envelope.barcode }}</span>
+    <div class="ml-auto env-bc-compact">
+      <svg id="env-bc-svg" aria-label="Envelope barcode"></svg>
+    </div>
   </div>
 
+  {% if scan_warning %}
+  <div class="alert alert-error">{{ scan_warning }}</div>
+  {% endif %}
+
   <div class="env-meta">
-    <div class="env-meta-item"><label>Отправитель</label><span>{{ envelope.origin_branch_name or '—' }}</span></div>
-    <div class="env-meta-item"><label>Получатель</label><span>{{ envelope.destination_branch_name or '—' }}</span></div>
+    <div class="env-meta-item"><label>Дата отправки</label><span>{{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') if envelope.sealed_at else '—' }}</span></div>
+    <div class="env-meta-item"><label>Оператор отправки</label><span>{{ envelope.created_by or '—' }}</span></div>
+    <div class="env-meta-item"><label>Место отправки</label><span>{{ origin_branch_name or '—' }}</span></div>
+    <div class="env-meta-item"><label>Подписанты</label><span>{{ signer_sender_name or '—' }} / {{ signer_receiver_name or '—' }}</span></div>
     <div class="env-meta-item"><label>Документов</label><span>{{ documents|length }}</span></div>
     <div class="env-meta-item"><label>Отсканировано</label><span>{{ scanned_count }}</span></div>
   </div>
@@ -27,7 +38,7 @@
   });
   function verifyManual() {
     const v = document.getElementById('verify-manual').value.trim();
-    if (v) { scanDocInVerify(v); document.getElementById('verify-manual').value = ''; }
+    if (v) { dispatch(v); document.getElementById('verify-manual').value = ''; }
   }
   </script>
 
@@ -40,7 +51,7 @@
     <form hx-post="/ui/envelopes/{{ envelope.id }}/verify/finish"
           hx-target="#verify-card" hx-swap="outerHTML">
       <input type="hidden" name="force" value="false">
-      <button type="submit" class="btn btn-success">✓ Завершить — всё в порядке</button>
+      <button type="submit" class="btn btn-success">✓ Завершить</button>
     </form>
     {% else %}
     <span class="text-muted" style="align-self:center">
@@ -48,7 +59,7 @@
     </span>
     <form hx-post="/ui/envelopes/{{ envelope.id }}/verify/finish"
           hx-target="#verify-card" hx-swap="outerHTML"
-          hx-confirm="Завершить с расхождениями?"
+          hx-confirm="Не все документы отсканированы. Вы уверены что желаете завершить проверку?"
           style="margin-left:auto">
       <input type="hidden" name="force" value="true">
       <button type="submit" class="btn btn-danger">Завершить с расхождением</button>

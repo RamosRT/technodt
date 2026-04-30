@@ -1,16 +1,17 @@
 {# Final result after verify/finish #}
 <div id="verify-card">
 <div class="card">
+  {% set env_status = envelope.status.value if envelope.status.value is defined else envelope.status %}
   <div class="card-title">
     <span>{{ envelope.number }}</span>
-    {% if envelope.status == 'verified' %}
+    {% if env_status == 'verified' %}
     <span class="badge badge-verified">Верифицирован</span>
     {% else %}
     <span class="badge badge-discrepancy">Расхождение</span>
     {% endif %}
   </div>
 
-  {% if envelope.status == 'verified' %}
+  {% if env_status == 'verified' %}
   <div class="alert alert-success">✓ Все {{ documents|length }} документов получены. Верификация завершена.</div>
   {% else %}
   <div class="alert alert-error">
@@ -41,7 +42,14 @@
   {% endif %}
 
   <div class="mt-16">
+    {% if env_status == 'verified_with_discrepancy' %}
+    <button class="btn btn-ghost"
+            onclick="window.open('/api/envelopes/{{ envelope.id }}/print/discrepancy-act','_blank'); location.reload();">
+      Закрыть
+    </button>
+    {% else %}
     <button class="btn btn-ghost" onclick="location.reload()">Закрыть</button>
+    {% endif %}
   </div>
 </div>
 </div>

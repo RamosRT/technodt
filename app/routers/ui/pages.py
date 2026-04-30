@@ -6,6 +6,7 @@ from urllib.parse import quote, unquote
 from fastapi import APIRouter, Cookie, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
@@ -14,6 +15,7 @@ from app.exceptions import AppError
 import app.services.envelopes as env_svc
 import app.services.dictionaries as dict_svc
 import app.services.verify as verify_svc
+from app.models import Branch, EnvelopeStatus, Signer
 from app.services.odata import OneCClient
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
@@ -31,6 +33,42 @@ router = APIRouter(tags=["ui"])
 
 def _operator(operator_name: str | None = Cookie(default=None)) -> str | None:
     return unquote(operator_name) if operator_name else None
+
+
+async def _verify_meta(session: AsyncSession, envelope) -> dict:
+    branch_name = None
+    if envelope.origin_branch_id:
+        branch_name = (
+            await session.execute(
+                select(Branch.name).where(Branch.id == envelope.origin_branch_id)
+            )
+        ).scalar_one_or_none()
+
+    signer_sender_name = None
+    if envelope.signer_sender_id:
+        signer_sender_name = (
+            await session.execute(
+                select(Signer.last_name, Signer.first_name).where(Signer.id == envelope.signer_sender_id)
+            )
+        ).one_or_none()
+
+    signer_receiver_name = None
+    if envelope.signer_receiver_id:
+        signer_receiver_name = (
+            await session.execute(
+                select(Signer.last_name, Signer.first_name).where(Signer.id == envelope.signer_receiver_id)
+            )
+        ).one_or_none()
+
+    return {
+        "origin_branch_name": branch_name,
+        "signer_sender_name": (
+            f"{signer_sender_name[0]} {signer_sender_name[1]}" if signer_sender_name else None
+        ),
+        "signer_receiver_name": (
+            f"{signer_receiver_name[0]} {signer_receiver_name[1]}" if signer_receiver_name else None
+        ),
+    }
 
 
 # ─── Root ────────────────────────────────────────────────────────────────────
@@ -155,7 +193,7 @@ async def ui_seal_envelope(
     signer_sender_id: uuid.UUID = Form(...),
     signer_receiver_id: uuid.UUID = Form(...),
     origin_branch_id: uuid.UUID = Form(...),
-    destination_branch_id: uuid.UUID = Form(...),
+    destination_branch_id: uuid.UUID | None = Form(default=None),
     notes: str | None = Form(default=None),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
@@ -209,6 +247,12 @@ async def ui_verify_start_by_barcode(
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
     try:
         envelope = await env_svc.get_by_barcode(session, barcode)
+        if envelope.status in {EnvelopeStatus.verified, EnvelopeStatus.verified_with_discrepancy}:
+            return templates.TemplateResponse(
+                request,
+                "partials/verify_prompt.html",
+                {"error": "Этот конверт уже проверен. Повторная верификация недоступна."},
+            )
         await verify_svc.start(session, envelope=envelope, operator=operator)
         await session.commit()
         envelope = await env_svc.get_by_id(session, envelope.id)
@@ -216,11 +260,13 @@ async def ui_verify_start_by_barcode(
         return templates.TemplateResponse(request, "partials/verify_prompt.html", {"error": e.detail})
 
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
+    meta = await _verify_meta(session, envelope)
     return templates.TemplateResponse(request, "partials/verify_card.html", {
         "envelope": envelope,
         "documents": envelope.documents,
         "scanned_count": scanned,
         "all_scanned": scanned == len(envelope.documents),
+        **meta,
     })
 
 
@@ -245,9 +291,20 @@ async def ui_verify_scan(
         doc.just_scanned = (doc.id == just_scanned_id)
 
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
-    return templates.TemplateResponse(request, "partials/verify_table.html", {
+    warning = None
+    if result.reason == "not_in_envelope":
+        warning = "Документ не найден в составе этого конверта"
+    elif result.reason == "already_scanned":
+        warning = "Этот документ уже был отсканирован в текущей проверке"
+
+    meta = await _verify_meta(session, envelope)
+    return templates.TemplateResponse(request, "partials/verify_card.html", {
+        "envelope": envelope,
         "documents": envelope.documents,
         "scanned_count": scanned,
+        "all_scanned": scanned == len(envelope.documents),
+        "scan_warning": warning,
+        **meta,
     })
 
 
@@ -262,12 +319,15 @@ async def ui_verify_finish(
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
 
-    envelope = await env_svc.get_by_id(session, envelope_id)
-    result = await verify_svc.finish(
-        session, envelope=envelope, force=(force == "true"), operator=operator
-    )
-    await session.commit()
-    envelope = await env_svc.get_by_id(session, envelope_id)
+    try:
+        envelope = await env_svc.get_by_id(session, envelope_id)
+        result = await verify_svc.finish(
+            session, envelope=envelope, force=(force == "true"), operator=operator
+        )
+        await session.commit()
+        envelope = await env_svc.get_by_id(session, envelope_id)
+    except AppError as e:
+        return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
     return templates.TemplateResponse(request, "partials/verify_done.html", {
         "envelope": envelope,

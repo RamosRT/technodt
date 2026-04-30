@@ -28,7 +28,7 @@
 docker run -d --name pg-konvert \
   -e POSTGRES_USER=convert_track \
   -e POSTGRES_PASSWORD=convert_track \
-  -p 5432:5432 \
+  -p 5433:5432 \
   postgres:16-alpine
 
 # Создать тестовую БД отдельно
@@ -47,6 +47,13 @@ docker compose up -d
 ```bash
 python -m venv venv
 venv\Scripts\python -m pip install -e .[dev]
+venv\Scripts\python -m playwright install chromium
+```
+
+Или одним шагом (создание venv + зависимости + браузер Playwright):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-venv.ps1 -Dev
 ```
 
 ### 3. Переменные окружения

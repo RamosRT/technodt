@@ -45,6 +45,25 @@ async def scan(session: AsyncSession, *, envelope: Envelope, barcode: str, opera
         await write_event(session, envelope_id=envelope.id, event="verify_scan", actor=operator,
                           payload={"barcode": barcode, "matched": False})
         return ScanResult(matched=False, reason="not_in_envelope")
+    if doc.scanned_at_verification is not None:
+        await write_event(
+            session,
+            envelope_id=envelope.id,
+            event="verify_scan",
+            actor=operator,
+            payload={
+                "barcode": barcode,
+                "matched": True,
+                "doc_id": str(doc.id),
+                "duplicate": True,
+            },
+        )
+        return ScanResult(
+            matched=True,
+            doc_id=doc.id,
+            scanned_at=doc.scanned_at_verification,
+            reason="already_scanned",
+        )
     if doc.scanned_at_verification is None:
         doc.scanned_at_verification = datetime.now(timezone.utc)
     await write_event(session, envelope_id=envelope.id, event="verify_scan", actor=operator,

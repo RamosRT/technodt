@@ -7,6 +7,9 @@ const App = {
   mode: "idle",          // idle | register | verify
   envelopeId: null,      // current envelope UUID
   envelopeBarcode: null, // current envelope barcode
+  envelopeDocsCount: 0,  // current envelope document count
+  verifyScannedCount: 0,
+  verifyTotalCount: 0,
   awaitingEnvBC: false,  // true while waiting for envelope barcode in verify
 };
 
@@ -37,11 +40,23 @@ setInterval(ensureFocus, 500);
 // ─── Scanner dispatch ───────────────────────────────────────────
 SCANNER && SCANNER.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
-  const barcode = SCANNER.value.trim();
+  const barcode = sanitizeScannedInput(SCANNER.value);
   SCANNER.value = "";
   if (!barcode) return;
   dispatch(barcode);
 });
+
+function sanitizeScannedInput(value) {
+  if (!value) return "";
+  // Some scanners prepend AIM symbology IDs like ]C1 / ]e0.
+  return value.trim().replace(/^\][A-Za-z][0-9]/, "");
+}
+
+function normalizeBarcodeForCompare(value) {
+  if (!value) return "";
+  // Compare loosely: ignore case and separators like spaces/hyphens.
+  return value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
 
 function dispatch(barcode) {
   if (App.mode === "idle") return;
@@ -49,13 +64,30 @@ function dispatch(barcode) {
     if (App.awaitingEnvBC) {
       openVerifyEnvelope(barcode);
     } else {
+      const scanned = normalizeBarcodeForCompare(barcode);
+      const envelope = normalizeBarcodeForCompare(App.envelopeBarcode);
+      if (envelope && (scanned === envelope || scanned.includes(envelope) || envelope.includes(scanned))) {
+        const allScanned = App.verifyScannedCount >= App.verifyTotalCount;
+        if (!allScanned) {
+          const ok = window.confirm("Не все документы отсканированы. Вы уверены что желаете завершить проверку?");
+          if (!ok) return;
+        }
+        finishVerify(!allScanned);
+        return;
+      }
       scanDocInVerify(barcode);
     }
     return;
   }
   if (App.mode === "register") {
     // In register mode scanning the current envelope barcode means "start sealing".
-    if (App.envelopeBarcode && barcode === App.envelopeBarcode) {
+    const scanned = normalizeBarcodeForCompare(barcode);
+    const envelope = normalizeBarcodeForCompare(App.envelopeBarcode);
+    if (envelope && (scanned === envelope || scanned.includes(envelope) || envelope.includes(scanned))) {
+      if (App.envelopeDocsCount < 1) {
+        showToast("Нельзя запечатать пустой конверт: сначала добавьте документ", "error");
+        return;
+      }
       openModal("seal-modal");
       showToast("ШК конверта распознан — заполните поля и запечатайте", "info");
       return;
@@ -85,9 +117,18 @@ function openVerifyEnvelope(barcode) {
 function scanDocInVerify(barcode) {
   if (!App.envelopeId) return;
   htmx.ajax("POST", `/ui/envelopes/${App.envelopeId}/verify/scan`, {
-    target: "#verify-area",
+    target: "#verify-card",
     swap: "outerHTML",
     values: { barcode },
+  });
+}
+
+function finishVerify(force) {
+  if (!App.envelopeId) return;
+  htmx.ajax("POST", `/ui/envelopes/${App.envelopeId}/verify/finish`, {
+    target: "#verify-card",
+    swap: "outerHTML",
+    values: { force: force ? "true" : "false" },
   });
 }
 
@@ -96,6 +137,9 @@ function setMode(mode) {
   App.mode = mode;
   App.envelopeId = null;
   App.envelopeBarcode = null;
+  App.envelopeDocsCount = 0;
+  App.verifyScannedCount = 0;
+  App.verifyTotalCount = 0;
   App.awaitingEnvBC = (mode === "verify");
   updateModeBar();
 }
@@ -125,19 +169,26 @@ function updateModeBar() {
 }
 
 // Called by server-rendered HTML after envelope is created/loaded
-function onEnvelopeLoaded(id, barcode = null) {
+function onEnvelopeLoaded(id, barcode = null, docsCount = 0) {
   App.envelopeId = id;
   App.envelopeBarcode = barcode;
+  App.envelopeDocsCount = Number.isFinite(Number(docsCount)) ? Number(docsCount) : 0;
   App.mode = "register";
   App.awaitingEnvBC = false;
   updateModeBar();
-  if (barcode) renderEnvelopeBarcode(barcode);
+  // The callback is invoked from an inline script inside an HTMX fragment.
+  // Defer rendering so the <svg id="env-bc-svg"> is already in the DOM.
+  if (barcode) requestAnimationFrame(() => renderEnvelopeBarcode(barcode));
   ensureFocus();
 }
 
-function onVerifyEnvelopeLoaded(id) {
+function onVerifyEnvelopeLoaded(id, barcode = null, scannedCount = 0, totalCount = 0) {
   App.envelopeId = id;
+  App.envelopeBarcode = barcode;
+  App.verifyScannedCount = Number.isFinite(Number(scannedCount)) ? Number(scannedCount) : 0;
+  App.verifyTotalCount = Number.isFinite(Number(totalCount)) ? Number(totalCount) : 0;
   App.awaitingEnvBC = false;
+  App.mode = "verify";
   updateModeBar();
   ensureFocus();
 }
@@ -222,16 +273,28 @@ const CODE128_PATTERNS = [
 
 function renderEnvelopeBarcode(data) {
   const svg = document.getElementById("env-bc-svg");
-  if (!svg || !/^\d+$/.test(data) || data.length % 2 !== 0) return;
-  const values = [105]; // Start C
-  for (let i = 0; i < data.length; i += 2) values.push(parseInt(data.slice(i, i + 2), 10));
-  let checksum = 105;
+  if (!svg || !data) return;
+
+  // Prefer Code 128C for even-length numeric payloads, otherwise fallback to 128B.
+  const codeSet = /^\d+$/.test(data) && data.length % 2 === 0 ? "C" : "B";
+  const values = [codeSet === "C" ? 105 : 104];
+  if (codeSet === "C") {
+    for (let i = 0; i < data.length; i += 2) values.push(parseInt(data.slice(i, i + 2), 10));
+  } else {
+    for (const ch of data) {
+      const code = ch.charCodeAt(0);
+      if (code < 32 || code > 126) return;
+      values.push(code - 32);
+    }
+  }
+
+  let checksum = values[0];
   for (let i = 1; i < values.length; i++) checksum += values[i] * i;
   values.push(checksum % 103, 106); // checksum + stop
 
-  const module = 2;
-  const height = 72;
-  const quiet = 10 * module;
+  const module = 3;
+  const height = 96;
+  const quiet = 12 * module;
   let x = quiet;
   let bars = "";
   for (const code of values) {

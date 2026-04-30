@@ -31,5 +31,5 @@ class SealRequest(BaseModel):
     signer_sender_id: uuid.UUID
     signer_receiver_id: uuid.UUID
     origin_branch_id: uuid.UUID
-    destination_branch_id: uuid.UUID
+    destination_branch_id: uuid.UUID | None = None
     notes: str | None = None
