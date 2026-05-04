@@ -1,6 +1,7 @@
 package ru.technoavia.konverttrack.data.api
 
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 
@@ -20,6 +21,7 @@ data class DocumentDto(
     val doc_kind: String,
     val doc_number: String,
     val doc_date: String,
+    val scanned_at_verification: String? = null,
 )
 
 data class EnvelopeDto(
@@ -32,9 +34,28 @@ data class EnvelopeDto(
     val documents: List<DocumentDto> = emptyList(),
 )
 
+data class VerifyScanRequest(val barcode: String)
+
+data class VerifyScanResponse(
+    val matched: Boolean,
+    val doc_id: String? = null,
+    val scanned_at: String? = null,
+    val reason: String? = null,
+)
+
+data class VerifyFinishRequest(val force: Boolean = false)
+
+data class VerifyFinishResponse(
+    val status: String,
+    val missing_docs: List<String> = emptyList(),
+)
+
 interface EnvelopeApi {
     @POST("api/envelopes")
     suspend fun createEnvelope(): EnvelopeDto
+
+    @GET("api/envelopes/by-barcode/{barcode}")
+    suspend fun getByBarcode(@Path("barcode") barcode: String): EnvelopeDto
 
     @POST("api/envelopes/{envelopeId}/documents")
     suspend fun addDocument(
@@ -53,4 +74,19 @@ interface EnvelopeApi {
         @Path("envelopeId") envelopeId: String,
         @retrofit2.http.Query("printer_id") printerId: String,
     ): retrofit2.Response<Unit>
+
+    @POST("api/envelopes/{envelopeId}/verify/start")
+    suspend fun verifyStart(@Path("envelopeId") envelopeId: String): EnvelopeDto
+
+    @POST("api/envelopes/{envelopeId}/verify/scan")
+    suspend fun verifyScan(
+        @Path("envelopeId") envelopeId: String,
+        @Body request: VerifyScanRequest,
+    ): VerifyScanResponse
+
+    @POST("api/envelopes/{envelopeId}/verify/finish")
+    suspend fun verifyFinish(
+        @Path("envelopeId") envelopeId: String,
+        @Body request: VerifyFinishRequest,
+    ): VerifyFinishResponse
 }

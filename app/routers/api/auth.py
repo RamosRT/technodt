@@ -9,14 +9,15 @@ from app.db import get_session
 from app.exceptions import OperatorRequired
 from app.models import Operator
 from app.schemas.auth import LoginRequest, LoginResponse, MeResponse
-from app.services.operators import ensure_operator
+from app.services.operators import authenticate_operator, ensure_operator, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _is_bootstrap_admin(name: str) -> bool:
     settings = get_settings()
-    return bool(settings.bootstrap_admin) and name == settings.bootstrap_admin
+    admin_login = settings.admin_login.strip().casefold()
+    return bool(admin_login) and name.strip().casefold() == admin_login
 
 
 async def _get_operator(session: AsyncSession, name: str) -> Operator:
@@ -32,14 +33,26 @@ async def login(
     response: Response,
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
-    name = body.name.strip()
+    name = body.username.strip()
     if not name:
-        raise OperatorRequired("Введите имя оператора")
-
-    await _get_operator(session, name)
-    await session.commit()
+        raise OperatorRequired("Введите логин")
 
     settings = get_settings()
+    if _is_bootstrap_admin(name):
+        op = await ensure_operator(
+            session,
+            name,
+            bootstrap=True,
+            password=settings.admin_password if settings.admin_password else None,
+        )
+        if not verify_password(body.password, op.password_hash):
+            raise OperatorRequired("Неверный логин или пароль")
+    else:
+        op = await authenticate_operator(session, name, body.password)
+        if op is None:
+            raise OperatorRequired("Неверный логин или пароль")
+    await session.commit()
+
     response.set_cookie(
         "operator_name",
         quote(name),
@@ -47,7 +60,7 @@ async def login(
         httponly=True,
         samesite="lax",
     )
-    return LoginResponse(ok=True, operator=name)
+    return LoginResponse(ok=True, operator=name, assigned_zpl_printer_id=op.assigned_zpl_printer_id)
 
 
 @router.get("/me", response_model=MeResponse)

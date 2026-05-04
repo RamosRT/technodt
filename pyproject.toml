@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "playwright>=1.50",
     "python-barcode[images]>=0.15",
+    "qrcode[pil]>=7.4",
 ]
 
 [project.optional-dependencies]

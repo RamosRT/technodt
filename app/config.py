@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,7 +18,14 @@ class Settings(BaseSettings):
     odata_timeout_seconds: int = 60
 
     envelope_bc_prefix: str = ""
-    bootstrap_admin: str = ""
+    admin_login: str = Field(
+        default="",
+        validation_alias=AliasChoices("ADMIN_LOGIN", "BOOTSTRAP_ADMIN"),
+    )
+    admin_password: str = Field(
+        default="0000",
+        validation_alias=AliasChoices("ADMIN_PASSWORD", "BOOTSTRAP_ADMIN_PASSWORD"),
+    )
     auth_cookie_max_age_seconds: int = 28800
     printers_json: str = "[]"
 

@@ -38,7 +38,7 @@ async def test_printer_list_returns_configured_printers(client, monkeypatch):
         ),
     )
     get_settings.cache_clear()
-    await client.post("/api/auth/login", json={"name": "Тест"})
+    client.cookies.set("operator_name", "Test")
 
     r = await client.get("/api/printers")
 
@@ -50,7 +50,7 @@ async def test_printer_list_returns_configured_printers(client, monkeypatch):
 async def test_printer_list_rejects_malformed_config(client, monkeypatch):
     monkeypatch.setenv("PRINTERS_JSON", "{bad")
     get_settings.cache_clear()
-    await client.post("/api/auth/login", json={"name": "Тест"})
+    client.cookies.set("operator_name", "Test")
 
     r = await client.get("/api/printers")
 
@@ -60,7 +60,7 @@ async def test_printer_list_rejects_malformed_config(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_label_send_unknown_printer_returns_404(client):
-    await client.post("/api/auth/login", json={"name": "Тест"})
+    client.cookies.set("operator_name", "Test")
     created = await client.post("/api/envelopes")
 
     r = await client.post(
@@ -96,7 +96,7 @@ async def test_label_send_calls_zpl_sender(client, monkeypatch):
         calls.append((printer.id, payload))
 
     monkeypatch.setattr("app.services.printers.send_zpl", fake_send)
-    await client.post("/api/auth/login", json={"name": "Тест"})
+    client.cookies.set("operator_name", "Test")
     created = await client.post("/api/envelopes")
 
     r = await client.post(
@@ -117,7 +117,7 @@ async def test_inventory_send_returns_501(client, monkeypatch):
         json.dumps([{"id": "a4-main", "name": "A4", "kind": "a4"}]),
     )
     get_settings.cache_clear()
-    await client.post("/api/auth/login", json={"name": "Тест"})
+    client.cookies.set("operator_name", "Test")
     created = await client.post("/api/envelopes")
 
     r = await client.post(

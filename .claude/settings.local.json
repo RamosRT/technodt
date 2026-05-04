@@ -63,7 +63,12 @@
       "Bash(/e/technodt/venv/Scripts/python *)",
       "Bash(/e/technodt/venv/Scripts/pip show *)",
       "Bash(venv/Scripts/pip install *)",
-      "Bash(venv/Scripts/playwright install *)"
+      "Bash(venv/Scripts/playwright install *)",
+      "Bash(adb devices *)",
+      "Read(//c/Users/Ramos/AppData/Local/Android/Sdk/platform-tools/**)",
+      "Bash(adb.exe shell *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Ramos\\\\.claude\\\\skills\\\\\" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })",
+      "Bash(bash *)"
     ]
   }
 }

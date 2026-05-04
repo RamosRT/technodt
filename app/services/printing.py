@@ -1,5 +1,6 @@
 """Print service: PDF (Playwright/Chromium) and ZPL label rendering."""
 import asyncio
+import base64
 import io
 import uuid
 from datetime import datetime, timezone
@@ -192,3 +193,57 @@ async def render_discrepancy_act_pdf(session: AsyncSession, envelope_id: uuid.UU
     )
     html_str = _jinja_env().get_template("print/discrepancy_act.html").render(**ctx)
     return await _html_to_pdf(html_str)
+
+
+def _render_qr_png_base64(payload: str) -> str:
+    import qrcode
+
+    qr = qrcode.QRCode(version=None, box_size=12, border=2)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+async def render_operator_auth_label_pdf(server_url: str, username: str, password: str) -> bytes:
+    payload = f"KTLOGIN|{server_url.strip()}|{username}|{password}"
+    qr_png_b64 = await asyncio.to_thread(_render_qr_png_base64, payload)
+    html = f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page {{ size: 100mm 50mm; margin: 6mm; }}
+    body {{
+      font-family: Arial, sans-serif;
+      margin: 0;
+      color: #1b2848;
+    }}
+    .wrap {{
+      display: grid;
+      grid-template-columns: 36mm 1fr;
+      gap: 6mm;
+      align-items: center;
+      height: 100%;
+    }}
+    img {{ width: 36mm; height: 36mm; }}
+    .title {{ font-size: 14pt; font-weight: 700; margin-bottom: 2mm; }}
+    .line {{ font-size: 10pt; margin: 0 0 1mm; }}
+    .hint {{ font-size: 8.5pt; color: #4a5c7a; margin-top: 2mm; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <img src="data:image/png;base64,{qr_png_b64}" alt="QR auth" />
+    <div>
+      <div class="title">Вход ТСД</div>
+      <p class="line"><strong>Оператор:</strong> {username}</p>
+      <p class="line"><strong>PIN:</strong> {password}</p>
+      <p class="hint">Отсканируйте QR на экране входа ТСД</p>
+    </div>
+  </div>
+</body>
+</html>"""
+    return await _html_to_pdf(html)

@@ -663,8 +663,21 @@ textarea.form-control { resize: vertical; min-height: 60px; }
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
   gap: 18px;
+  align-items: start;
 }
-.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-v2-grid > * { min-width: 0; }
+.admin-v2-grid .data-table th:nth-child(1),
+.admin-v2-grid .data-table td:nth-child(1) { min-width: 170px; }
+.admin-v2-grid .data-table th:nth-child(4),
+.admin-v2-grid .data-table td:nth-child(4) { min-width: 180px; }
+.admin-v2-grid .data-table th:nth-child(5),
+.admin-v2-grid .data-table td:nth-child(5) { min-width: 95px; white-space: nowrap; }
+.admin-v2-grid .data-table th:last-child,
+.admin-v2-grid .data-table td:last-child { width: 68px; min-width: 68px; text-align: right; }
+.row-actions { position: relative; }
+.inline-form { display:inline-flex;align-items:center;gap:5px;flex-wrap:nowrap;max-width:100%; }
+.form-control-sm { min-height:26px;padding:4px 7px;font-size:12px;width:auto; }
+.pin-input { width:72px;min-width:72px; }
 .checkbox-inline {
   display: inline-flex;
   align-items: center;
@@ -705,6 +718,78 @@ textarea.form-control { resize: vertical; min-height: 60px; }
   color: var(--red);
   font-size: 14px;
   margin-bottom: 10px;
+}
+.row-menu {
+  position: relative;
+  display: inline-block;
+}
+.row-menu summary {
+  list-style: none;
+}
+.row-menu summary::-webkit-details-marker {
+  display: none;
+}
+.row-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.row-menu-trigger:hover {
+  color: var(--ink);
+  border-color: #b6c2d6;
+}
+.row-menu-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+.row-menu[open] .row-menu-panel {
+  display: flex;
+}
+.row-menu-panel {
+  display: none;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  min-width: 210px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(27, 40, 72, .18);
+}
+.row-menu-item {
+  width: 100%;
+  justify-content: center;
+}
+.row-menu-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+.row-menu-form .pin-input {
+  width: 100%;
+  min-width: 70px;
+}
+
+@media (max-width: 1180px) {
+  .admin-v2-grid {
+    grid-template-columns: 1fr;
+  }
+  .row-menu-panel {
+    right: auto;
+    left: 0;
+  }
 }
 
 /* ─── Scanner input (visually hidden, always focused) ─────────── */
@@ -825,6 +910,8 @@ textarea.form-control { resize: vertical; min-height: 60px; }
 .btn-danger { background:linear-gradient(105deg,#cc0c00,#d04a34);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px; }
 .btn-primary i,.btn-secondary i,.btn-danger i { width:13px;height:13px; }
 .data-table-wrap { background:#fff;border:1px solid #dde4ef;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(27,40,72,0.06); }
+/* Keep action dropdown visible in admin table. */
+.admin-v2-grid .data-table-wrap { overflow-x:auto; overflow-y:hidden; }
 .data-table { width:100%;border-collapse:collapse;font-size:12.5px; }
 .data-table thead tr { background:linear-gradient(90deg,#f0f4fa,#f5f8fc); }
 .data-table th { padding:10px 13px;text-align:left;font-weight:600;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e6eaf2;white-space:nowrap; }

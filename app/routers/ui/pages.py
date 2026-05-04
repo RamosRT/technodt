@@ -11,16 +11,17 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.services.dictionaries as dict_svc
+import app.services.envelopes as env_svc
+import app.services.printers as printer_svc
+import app.services.verify as verify_svc
 from app.auth import get_is_admin
 from app.config import get_settings
 from app.db import get_session
-from app.parsing import optional_query_date
 from app.deps import get_one_c_client
 from app.exceptions import AppError
-import app.services.envelopes as env_svc
-import app.services.dictionaries as dict_svc
-import app.services.verify as verify_svc
 from app.models import AuditLog, Branch, Envelope, EnvelopeStatus, Signer
+from app.parsing import optional_query_date
 from app.services import documents as doc_svc
 from app.services import operators as op_svc
 from app.services.odata import OneCClient
@@ -36,6 +37,10 @@ STATUS_LABELS = {
 }
 
 router = APIRouter(tags=["ui"])
+
+
+def _is_bootstrap_admin_name(name: str, admin_login: str) -> bool:
+    return bool(admin_login.strip()) and name.strip().casefold() == admin_login.strip().casefold()
 
 
 def _operator(operator_name: str | None = Cookie(default=None)) -> str | None:
@@ -56,6 +61,12 @@ def _optional_status(value: str | EnvelopeStatus | None) -> EnvelopeStatus | Non
     if isinstance(value, EnvelopeStatus):
         return value
     return EnvelopeStatus(value)
+
+
+def _is_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "on", "yes"}
 
 
 async def _verify_meta(session: AsyncSession, envelope) -> dict:
@@ -180,16 +191,42 @@ async def index(
 @router.post("/ui/operator", response_class=HTMLResponse)
 async def set_operator(
     request: Request,
-    operator_name: str = Form(...),
+    username: str = Form(default=""),
+    operator_name: str = Form(default=""),
+    password: str = Form(default=""),
     session: AsyncSession = Depends(get_session),
 ):
-    name = operator_name.strip()
+    name = (username or operator_name).strip()
+    if not name:
+        return HTMLResponse(
+            '<div class="alert alert-error">Введите логин</div>',
+            status_code=400,
+        )
+    if len(password) != 4 or not password.isdigit():
+        return HTMLResponse(
+            '<div class="alert alert-error">Введите PIN из 4 цифр</div>',
+            status_code=400,
+        )
     settings = get_settings()
-    op = await op_svc.ensure_operator(
-        session,
-        name,
-        bootstrap=bool(settings.bootstrap_admin) and name == settings.bootstrap_admin,
-    )
+    if _is_bootstrap_admin_name(name, settings.admin_login):
+        op = await op_svc.ensure_operator(
+            session,
+            name,
+            bootstrap=True,
+            password=settings.admin_password if settings.admin_password else None,
+        )
+        if not op_svc.verify_password(password, op.password_hash):
+            return HTMLResponse(
+                '<div class="alert alert-error">Неверный логин или пароль</div>',
+                status_code=401,
+            )
+    else:
+        op = await op_svc.authenticate_operator(session, name, password)
+        if op is None:
+            return HTMLResponse(
+                '<div class="alert alert-error">Неверный логин или пароль</div>',
+                status_code=401,
+            )
     await session.commit()
     response = templates.TemplateResponse(
         request,
@@ -610,6 +647,7 @@ async def ui_admin(
     if not is_admin:
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     operators = await op_svc.list_operators(session)
+    printers = printer_svc.list_printers(get_settings())
     audit_ctx = await _audit_screen_context(session)
     return templates.TemplateResponse(
         request,
@@ -618,6 +656,7 @@ async def ui_admin(
             "operator": operator,
             "is_admin": is_admin,
             "operators": operators,
+            "printers": printers,
             "show_reset": get_settings().env != "production",
             **audit_ctx,
         },
@@ -632,6 +671,7 @@ async def _admin_v2_response(
     is_admin: bool,
 ):
     operators = await op_svc.list_operators(session)
+    printers = printer_svc.list_printers(get_settings())
     audit_ctx = await _audit_screen_context(session)
     return templates.TemplateResponse(
         request,
@@ -640,6 +680,7 @@ async def _admin_v2_response(
             "operator": operator,
             "is_admin": is_admin,
             "operators": operators,
+            "printers": printers,
             "show_reset": get_settings().env != "production",
             **audit_ctx,
         },
@@ -679,6 +720,8 @@ async def ui_audit(
 async def ui_create_operator(
     request: Request,
     username: str = Form(...),
+    password: str = Form(...),
+    assigned_zpl_printer_id: str = Form(default=""),
     is_admin_form: str = Form(default="", alias="is_admin"),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
@@ -686,7 +729,18 @@ async def ui_create_operator(
 ):
     if not is_admin:
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
-    await op_svc.ensure_operator(session, username, bootstrap=(is_admin_form == "true"))
+    if len(password) != 4 or not password.isdigit():
+        return HTMLResponse(
+            '<div class="alert alert-error">Пароль должен быть кодом из 4 цифр</div>',
+            status_code=400,
+        )
+    await op_svc.ensure_operator(
+        session,
+        username,
+        bootstrap=(is_admin_form == "true"),
+        password=password,
+        assigned_zpl_printer_id=assigned_zpl_printer_id or None,
+    )
     await session.commit()
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
 
@@ -697,6 +751,9 @@ async def ui_patch_operator(
     operator_id: uuid.UUID,
     is_admin_form: str = Form(default="", alias="is_admin"),
     is_active: str = Form(default=""),
+    password: str = Form(default=""),
+    assigned_zpl_printer_id: str = Form(default=""),
+    delete_form: str = Form(default="", alias="delete"),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
     is_admin: bool = Depends(get_is_admin),
@@ -707,15 +764,89 @@ async def ui_patch_operator(
         await session.execute(select(op_svc.Operator).where(op_svc.Operator.id == operator_id))
     ).scalar_one_or_none()
     if target and target.username == operator and is_active == "false":
-        return HTMLResponse('<div class="alert alert-error">Нельзя деактивировать себя</div>', status_code=400)
+        return HTMLResponse(
+            '<div class="alert alert-error">Нельзя деактивировать себя</div>',
+            status_code=400,
+        )
     if target and target.username == operator and is_admin_form == "false":
-        return HTMLResponse('<div class="alert alert-error">Нельзя снять роль администратора у себя</div>', status_code=400)
+        return HTMLResponse(
+            '<div class="alert alert-error">Нельзя снять роль администратора у себя</div>',
+            status_code=400,
+        )
+    if _is_truthy(delete_form):
+        if target is None:
+            return HTMLResponse('<div class="alert alert-error">Оператор не найден</div>', status_code=404)
+        if target.username == operator:
+            return HTMLResponse(
+                '<div class="alert alert-error">Нельзя удалить себя</div>',
+                status_code=400,
+            )
+        await op_svc.delete_operator(session, operator_id=operator_id)
+        await session.commit()
+        return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+    if password and (len(password) != 4 or not password.isdigit()):
+        return HTMLResponse(
+            '<div class="alert alert-error">Пароль должен быть кодом из 4 цифр</div>',
+            status_code=400,
+        )
     await op_svc.patch_operator(
         session,
         operator_id=operator_id,
         is_admin=True if is_admin_form == "true" else (False if is_admin_form == "false" else None),
         is_active=True if is_active == "true" else (False if is_active == "false" else None),
+        password=password if password else None,
+        assigned_zpl_printer_id=assigned_zpl_printer_id if assigned_zpl_printer_id else None,
     )
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.delete("/ui/operators/{operator_id}", response_class=HTMLResponse)
+async def ui_delete_operator(
+    request: Request,
+    operator_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    target = (
+        await session.execute(select(op_svc.Operator).where(op_svc.Operator.id == operator_id))
+    ).scalar_one_or_none()
+    if target is None:
+        return HTMLResponse('<div class="alert alert-error">Оператор не найден</div>', status_code=404)
+    if target.username == operator:
+        return HTMLResponse(
+            '<div class="alert alert-error">Нельзя удалить себя</div>',
+            status_code=400,
+        )
+    await op_svc.delete_operator(session, operator_id=operator_id)
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.post("/ui/operators/{operator_id}/delete", response_class=HTMLResponse)
+async def ui_delete_operator_post(
+    request: Request,
+    operator_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    target = (
+        await session.execute(select(op_svc.Operator).where(op_svc.Operator.id == operator_id))
+    ).scalar_one_or_none()
+    if target is None:
+        return HTMLResponse('<div class="alert alert-error">Оператор не найден</div>', status_code=404)
+    if target.username == operator:
+        return HTMLResponse(
+            '<div class="alert alert-error">Нельзя удалить себя</div>',
+            status_code=400,
+        )
+    await op_svc.delete_operator(session, operator_id=operator_id)
     await session.commit()
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
 

@@ -9,7 +9,7 @@
       <div class="data-table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Имя</th><th>Роль</th><th>Активен</th><th>Создан</th><th></th></tr>
+            <tr><th>Логин</th><th>Роль</th><th>Активен</th><th>ZPL-принтер</th><th>Создан</th><th></th></tr>
           </thead>
           <tbody>
             {% for op in operators %}
@@ -17,22 +17,55 @@
               <td><strong>{{ op.username }}</strong></td>
               <td>{% if op.is_admin %}<span class="admin-badge">Admin</span>{% else %}<span class="text-muted">Оператор</span>{% endif %}</td>
               <td>{% if op.is_active %}<span class="ok-text">Да</span>{% else %}<span class="danger-text">Нет</span>{% endif %}</td>
+              <td>
+                <form class="inline-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
+                  <select class="form-control form-control-sm" name="assigned_zpl_printer_id">
+                    <option value="">Не менять</option>
+                    {% for printer in printers if printer.kind == "zpl" %}
+                    <option value="{{ printer.id }}" {% if op.assigned_zpl_printer_id == printer.id %}selected{% endif %}>{{ printer.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-ghost btn-sm" type="submit">Назначить</button>
+                </form>
+              </td>
               <td>{{ op.created_at.strftime('%d.%m.%Y') }}</td>
               <td class="row-actions">
-                {% if not op.is_admin %}
-                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
-                        hx-vals='{"is_admin":"true"}' hx-target="#main-area">Admin</button>
-                {% elif op.username != operator %}
-                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
-                        hx-vals='{"is_admin":"false"}' hx-target="#main-area">Снять admin</button>
-                {% endif %}
-                {% if op.is_active %}
-                <button class="btn btn-danger btn-sm" hx-patch="/ui/operators/{{ op.id }}"
-                        hx-vals='{"is_active":"false"}' hx-target="#main-area">Отключить</button>
-                {% else %}
-                <button class="btn btn-ghost btn-sm" hx-patch="/ui/operators/{{ op.id }}"
-                        hx-vals='{"is_active":"true"}' hx-target="#main-area">Включить</button>
-                {% endif %}
+                <details class="row-menu">
+                  <summary class="row-menu-trigger" aria-label="Действия">
+                    <i data-lucide="ellipsis"></i>
+                  </summary>
+                  <div class="row-menu-panel">
+                    {% if not op.is_admin %}
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
+                            hx-vals='{"is_admin":"true"}' hx-target="#main-area">Сделать admin</button>
+                    {% elif op.username != operator %}
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
+                            hx-vals='{"is_admin":"false"}' hx-target="#main-area">Снять admin</button>
+                    {% endif %}
+                    {% if op.is_active %}
+                    <button class="btn btn-danger btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
+                            hx-vals='{"is_active":"false"}' hx-target="#main-area">Отключить</button>
+                    {% else %}
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
+                            hx-vals='{"is_active":"true"}' hx-target="#main-area">Включить</button>
+                    {% endif %}
+                    <form class="inline-form row-menu-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
+                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric"
+                             pattern="[0-9]{4}" maxlength="4" type="password" required>
+                      <button class="btn btn-ghost btn-sm row-menu-item" type="submit">Сменить PIN</button>
+                    </form>
+                    <form class="inline-form row-menu-form" action="/api/operators/{{ op.id }}/auth-label.pdf" method="get" target="_blank">
+                      <input type="hidden" name="server_url" value="{{ request.base_url|string|trim('/') }}">
+                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric"
+                             pattern="[0-9]{4}" maxlength="4" type="password" required>
+                      <button class="btn btn-ghost btn-sm row-menu-item" type="submit">QR ТСД (PDF)</button>
+                    </form>
+                    {% if op.username != operator %}
+                    <button class="btn btn-danger btn-sm row-menu-item" hx-post="/ui/operators/{{ op.id }}/delete"
+                            hx-target="#main-area" hx-confirm="Удалить оператора {{ op.username }}?">Удалить</button>
+                    {% endif %}
+                  </div>
+                </details>
               </td>
             </tr>
             {% endfor %}
@@ -41,7 +74,15 @@
       </div>
 
       <form class="filter-bar" hx-post="/ui/operators" hx-target="#main-area">
-        <input class="form-control" name="username" placeholder="Имя оператора" required>
+        <input class="form-control" name="username" placeholder="Логин" required>
+        <input class="form-control pin-input" name="password" placeholder="PIN" inputmode="numeric"
+               pattern="[0-9]{4}" maxlength="4" type="password" required>
+        <select class="form-control" name="assigned_zpl_printer_id">
+          <option value="">ZPL-принтер</option>
+          {% for printer in printers if printer.kind == "zpl" %}
+          <option value="{{ printer.id }}">{{ printer.name }}</option>
+          {% endfor %}
+        </select>
         <label class="checkbox-inline"><input type="checkbox" name="is_admin" value="true"> Admin</label>
         <button class="btn btn-primary" type="submit"><i data-lucide="user-plus"></i> Добавить</button>
       </form>

@@ -4,12 +4,16 @@
 {% if not operator %}
 <div class="operator-prompt">
   <h2>Вход в систему</h2>
-  <p>Введите ваше имя, чтобы продолжить</p>
+  <p>Введите логин и 4-значный код</p>
   <form hx-post="/ui/operator" hx-target="body" hx-swap="outerHTML">
     <div class="form-row">
-      <label for="op-name">Имя оператора</label>
-      <input class="form-control" id="op-name" name="operator_name" required
-             placeholder="Например: Иван Петров" autofocus>
+      <label for="op-name">Логин</label>
+      <input class="form-control" id="op-name" name="operator_name" required autofocus>
+    </div>
+    <div class="form-row">
+      <label for="op-password">Код</label>
+      <input class="form-control" id="op-password" name="password" required
+             inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password">
     </div>
     <button class="btn btn-primary" style="width:100%">Войти</button>
   </form>

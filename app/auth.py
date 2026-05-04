@@ -11,6 +11,10 @@ from app.models import Operator
 from app.services.operators import ensure_operator
 
 
+def _is_bootstrap_admin_name(name: str, admin_login: str) -> bool:
+    return bool(admin_login.strip()) and name.strip().casefold() == admin_login.strip().casefold()
+
+
 def require_operator():
     async def dep(
         operator_name: str | None = Cookie(default=None),
@@ -24,7 +28,7 @@ def require_operator():
             raise OperatorRequired("Введите имя оператора")
 
         settings = get_settings()
-        is_bootstrap = bool(settings.bootstrap_admin) and name == settings.bootstrap_admin
+        is_bootstrap = _is_bootstrap_admin_name(name, settings.admin_login)
         op = await ensure_operator(session, name, bootstrap=is_bootstrap)
         if not op.is_active:
             raise OperatorRequired("Оператор деактивирован")
@@ -43,7 +47,7 @@ def require_admin():
 
         name = unquote(operator_name).strip()
         settings = get_settings()
-        if settings.bootstrap_admin and name == settings.bootstrap_admin:
+        if _is_bootstrap_admin_name(name, settings.admin_login):
             op = await ensure_operator(session, name, bootstrap=True)
         else:
             op = (
@@ -71,7 +75,7 @@ async def get_is_admin(
 
     name = unquote(operator_name).strip()
     settings = get_settings()
-    if settings.bootstrap_admin and name == settings.bootstrap_admin:
+    if _is_bootstrap_admin_name(name, settings.admin_login):
         op = await ensure_operator(session, name, bootstrap=True)
         return op.is_active
 

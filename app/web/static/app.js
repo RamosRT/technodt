@@ -298,6 +298,26 @@ function submitManualBarcode(formId) {
   input.value = "";
 }
 
+// ─── Row action menu placement ───────────────────────────────────
+document.addEventListener("toggle", (e) => {
+  const menu = e.target;
+  if (!(menu instanceof HTMLDetailsElement) || !menu.classList.contains("row-menu")) return;
+  if (!menu.open) {
+    return;
+  }
+  const panel = menu.querySelector(".row-menu-panel");
+  const trigger = menu.querySelector(".row-menu-trigger");
+  if (!panel) return;
+  const rect = (trigger || menu).getBoundingClientRect();
+  const panelHeight = panel.offsetHeight || 220;
+  const panelWidth = panel.offsetWidth || 210;
+  const canOpenDown = rect.bottom + 8 + panelHeight <= window.innerHeight - 8;
+  const top = canOpenDown ? rect.bottom + 6 : Math.max(8, rect.top - panelHeight - 6);
+  const left = Math.max(8, Math.min(rect.right - panelWidth, window.innerWidth - panelWidth - 8));
+  panel.style.top = `${Math.round(top)}px`;
+  panel.style.left = `${Math.round(left)}px`;
+}, true);
+
 // ─── Envelope barcode rendering (Code128C SVG) ─────────────────
 const CODE128_PATTERNS = [
   "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312",

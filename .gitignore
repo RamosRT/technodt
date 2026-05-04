@@ -33,6 +33,9 @@ logs/
 *.log
 tmp/
 
+# JVM heap dumps (never commit)
+*.hprof
+
 # LibreOffice / pdf артефакты тестов
 *.pdf
 !docs/**/*.pdf
