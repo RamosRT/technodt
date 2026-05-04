@@ -1,0 +1,134 @@
+/* ============================================================
+   Konvert-Trek (Технониколь / Техноавиа brandbook lineage)
+   Colors + Type tokens
+   ============================================================ */
+
+/* ── Font faces (self-hosted Roboto family) ──────────────────────── */
+@font-face { font-family: 'Roboto'; src: url('fonts/Roboto-Light.ttf')   format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto'; src: url('fonts/Roboto-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto'; src: url('fonts/Roboto-Medium.ttf')  format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto'; src: url('fonts/Roboto-Bold.ttf')    format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto Condensed'; src: url('fonts/RobotoCondensed-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto Condensed'; src: url('fonts/RobotoCondensed-Bold.ttf')    format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+
+:root {
+  /* ── Brand palette (RGB from Technoavia brandbook) ──────────────── */
+  --brand-ink:        #1b2848;   /* PANTONE 2768 C — корпоративный чернильный */
+  --brand-blue:       #1d71b8;   /* PANTONE 285 C  — основной синий */
+  --brand-blue-mid:   #00397a;   /* mid-stop blue gradient */
+  --brand-blue-light: #6ea9dc;   /* светло-голубой 056 G */
+  --brand-red:        #cc0c00;   /* алый 031 G — primary red */
+  --brand-red-warm:   #d45c22;   /* алый gradient warm-stop */
+  --brand-red-alt:    #e4032e;   /* PANTONE 485 C — accent red */
+  --brand-green:      #a5c715;   /* RAL 6039-aligned accent (используется для success) */
+
+  /* ── Surface / text neutrals ────────────────────────────────────── */
+  --bg:               #f0f4f8;
+  --bg-2:             #f2f5f9;
+  --surface:          #ffffff;
+  --surface-alt:      #f7f9fc;
+  --surface-tint:     #e8f2fb;   /* selected/hover blue tint */
+  --border:           #d0dae6;
+  --border-soft:      #dde4ef;
+  --border-line:      #eef1f8;
+
+  --fg-1:             #1b2848;   /* primary text = ink */
+  --fg-2:             #334155;   /* secondary text */
+  --fg-3:             #6b7a99;   /* muted */
+  --fg-4:             #8895a7;   /* placeholder/label */
+  --fg-on-dark:       #ffffff;
+  --fg-on-dark-2:     #eaf3fb;
+
+  /* ── Semantic state colors ──────────────────────────────────────── */
+  --success:          #2e7d32;
+  --success-bg:       #e8f5e9;
+  --warning:          #f57f17;
+  --warning-bg:       #fff8e1;
+  --warning-border:   #f5a623;
+  --danger:           var(--brand-red);
+  --danger-bg:        #fce8e8;
+  --info:             var(--brand-blue);
+  --info-bg:          #e3f0fb;
+
+  /* ── Brand gradients (45°–115°; never 90°) ──────────────────────── */
+  --grad-blue:    linear-gradient(105deg, #1b2848 0%, #243560 55%, #2874b9 100%);
+  --grad-blue-2:  linear-gradient(105deg, #2874b9, #3a8fd4);
+  --grad-light:   linear-gradient(105deg, #6ea9dc 0%, #c5dbf0 50%, #ffffff 100%);
+  --grad-red:     linear-gradient(105deg, #cc0c00 0%, #d04a34 100%);
+  --grad-warning: linear-gradient(105deg, #f57f17, #ffa726);
+  --grad-header:  linear-gradient(105deg, #1b2848 0%, #243560 55%, #2874b9 100%);
+
+  /* ── Typography stacks ──────────────────────────────────────────── */
+  --font-sans:    'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Roboto Condensed', 'Roboto', sans-serif; /* headings, table headers, badges */
+  --font-mono:    'Roboto Condensed', ui-monospace, 'SF Mono', Menlo, monospace; /* used for barcodes, numbers */
+
+  /* ── Type scale (TSD-first: dense, readable on 5–6" screens) ────── */
+  --fs-xs:    11px;
+  --fs-sm:    12px;
+  --fs-base:  13px;
+  --fs-md:    14px;
+  --fs-lg:    16px;
+  --fs-xl:    18px;
+  --fs-2xl:   22px;
+  --fs-3xl:   28px;
+  --fs-4xl:   36px;
+
+  --lh-tight:  1.2;
+  --lh-snug:   1.35;
+  --lh-normal: 1.5;
+
+  --ls-caps:   .5px;
+  --ls-tight:  .3px;
+
+  /* ── Spacing scale (4px base) ───────────────────────────────────── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ── Radii ──────────────────────────────────────────────────────── */
+  --r-xs:  4px;
+  --r-sm:  6px;
+  --r-md:  8px;
+  --r-lg:  10px;
+  --r-pill: 999px;
+
+  /* ── Shadows ────────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(27,40,72,.06);
+  --shadow-md: 0 1px 4px rgba(27,40,72,.08);
+  --shadow-lg: 0 4px 18px rgba(27,40,72,.10);
+  --shadow-xl: 0 8px 32px rgba(27,40,72,.18);
+  --shadow-nav: 0 2px 12px rgba(27,40,72,.30);
+  --focus-ring: 0 0 0 3px rgba(29,113,184,.25);
+
+  /* ── Touch targets (TSD-specific) ───────────────────────────────── */
+  --hit-min: 44px;     /* minimum tappable height for handheld */
+  --hit-cta: 56px;     /* primary on-screen action */
+
+  /* ── Motion ─────────────────────────────────────────────────────── */
+  --ease:        cubic-bezier(.4, 0, .2, 1);
+  --dur-fast:    120ms;
+  --dur-base:    180ms;
+  --dur-slow:    300ms;
+}
+
+/* ── Semantic element defaults ───────────────────────────────────── */
+html, body { font-family: var(--font-sans); font-size: var(--fs-md); color: var(--fg-1); background: var(--bg); }
+
+h1, h2, h3, h4 { font-family: var(--font-display); color: var(--brand-ink); font-weight: 700; line-height: var(--lh-tight); margin: 0; }
+h1 { font-size: var(--fs-3xl); letter-spacing: var(--ls-tight); }
+h2 { font-size: var(--fs-2xl); }
+h3 { font-size: var(--fs-xl); }
+h4 { font-size: var(--fs-lg); text-transform: uppercase; letter-spacing: var(--ls-caps); }
+
+p  { font-size: var(--fs-md); line-height: var(--lh-normal); color: var(--fg-2); margin: 0; }
+
+code, .mono { font-family: var(--font-mono); letter-spacing: var(--ls-caps); }
+
+label, .eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--fg-4); text-transform: uppercase; letter-spacing: var(--ls-caps); }

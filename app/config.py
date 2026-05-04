@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     envelope_bc_prefix: str = ""
     bootstrap_admin: str = ""
+    auth_cookie_max_age_seconds: int = 28800
+    printers_json: str = "[]"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>TSD Android · ТехноКонверт</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../../colors_and_type.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    body { background: #e7ecf3; font-family: var(--font-body); margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .stage { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .device {
+      width: 360px; height: 720px;
+      background: #0d1422;
+      border-radius: 36px; padding: 12px;
+      box-shadow: 0 24px 60px rgba(13,20,34,.35), 0 4px 12px rgba(13,20,34,.2);
+      position: relative;
+    }
+    .device::before { content: ''; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 86px; height: 6px; border-radius: 4px; background: #2a3548; }
+    .device .screen { width: 100%; height: 100%; border-radius: 26px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; position: relative; }
+    .scanner-trigger { position: absolute; top: -2px; right: -10px; width: 10px; height: 56px; background: #f57f17; border-radius: 0 3px 3px 0; }
+
+    .nav-rail {
+      background: #fff; border-radius: 14px; padding: 14px;
+      width: 220px; box-shadow: 0 4px 18px rgba(27,40,72,.10);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .nav-rail h4 { font: 700 11px/1 var(--font-display); text-transform: uppercase; letter-spacing: .8px; color: var(--fg-3); margin: 4px 0 6px; padding: 0 8px; }
+    .nav-rail button {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 10px; border-radius: 8px; border: 0;
+      background: transparent; color: var(--fg-2); font: 500 13px var(--font-body);
+      cursor: pointer; text-align: left;
+    }
+    .nav-rail button:hover { background: var(--surface-tint); }
+    .nav-rail button.active { background: var(--brand-blue); color: #fff; }
+    .nav-rail button .lucide { width: 16px; height: 16px; }
+    .nav-rail .meta { padding: 8px; border-top: 1px solid var(--border-soft); margin-top: 6px; font: 400 11px var(--font-mono); color: var(--fg-4); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [route, setRoute] = useState('login'); // login | home | register | verify | service | printer
+      const [operator, setOperator] = useState(null);
+      useEffect(() => { window.lucide && window.lucide.createIcons(); }, [route]);
+
+      function login(name) { setOperator(name); setRoute('home'); }
+      function logout() { setOperator(null); setRoute('login'); }
+
+      let screen;
+      if (route === 'login')      screen = <LoginScreen onLogin={login} />;
+      else if (route === 'home')  screen = <HomeScreen operator={operator} onNav={setRoute} />;
+      else if (route === 'register') screen = <RegisterScreen onBack={() => setRoute('home')} onPrint={() => setRoute('printer')} />;
+      else if (route === 'verify')   screen = <VerifyScreen   onBack={() => setRoute('home')} />;
+      else if (route === 'service')  screen = <ServiceScreen  onBack={() => setRoute('home')} operator={operator} onLogout={logout} onPrinter={() => setRoute('printer')} />;
+      else if (route === 'printer')  screen = <PrinterScreen  onBack={() => setRoute(operator ? 'service' : 'home')} />;
+
+      const navItems = [
+        { id: 'login',    icon: 'log-in',        label: 'Вход' },
+        { id: 'home',     icon: 'layout-grid',   label: 'Главный экран' },
+        { id: 'register', icon: 'package-plus',  label: 'Регистрация' },
+        { id: 'verify',   icon: 'scan-line',     label: 'Верификация' },
+        { id: 'service',  icon: 'settings-2',    label: 'Сервис' },
+        { id: 'printer',  icon: 'printer',       label: 'Принтер' },
+      ];
+
+      return (
+        <div className="stage">
+          <nav className="nav-rail">
+            <h4>Прототип ТСД</h4>
+            {navItems.map(n => (
+              <button key={n.id} className={route === n.id ? 'active' : ''} onClick={() => setRoute(n.id)}>
+                <i data-lucide={n.icon} className="lucide" />{n.label}
+              </button>
+            ))}
+            <div className="meta">Urovo DT40 · 5.5"<br/>720×1440 logical</div>
+          </nav>
+          <div className="device">
+            <div className="scanner-trigger" />
+            <div className="screen">
+              <StatusBar />
+              {screen}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
