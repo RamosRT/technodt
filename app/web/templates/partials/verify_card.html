@@ -27,6 +27,12 @@ requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
     <div class="env-meta-item"><label>Отсканировано</label><span>{{ scanned_count }}</span></div>
   </div>
 
+  <div class="print-actions">
+    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank">Опись (PDF)</a>
+    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Этикетка (PDF)</a>
+    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank">Этикетка (ZPL)</a>
+  </div>
+
   <!-- Manual scan input -->
   <div class="flex gap-8" style="margin-bottom:16px">
     <input id="verify-manual" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
