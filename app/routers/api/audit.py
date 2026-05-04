@@ -1,5 +1,6 @@
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import datetime, time, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin
 from app.db import get_session
+from app.parsing import optional_query_date
 from app.models import AuditLog, Envelope
 from app.schemas.audit import AuditOut
 
@@ -15,8 +17,8 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 @router.get("")
 async def get_audit(
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     event: str | None = None,
     actor: str | None = None,
     envelope: str | None = None,
@@ -25,6 +27,8 @@ async def get_audit(
     _admin: None = require_admin(),
     session: AsyncSession = Depends(get_session),
 ):
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     stmt = select(AuditLog).outerjoin(Envelope, AuditLog.envelope_id == Envelope.id)
     if date_from:
         stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))

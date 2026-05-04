@@ -1,10 +1,12 @@
 import uuid
-from datetime import date
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin, require_operator
 from app.db import get_session
+from app.parsing import optional_query_date
 from app.deps import get_one_c_client
 from app.exceptions import AppError
 from app.models import EnvelopeStatus
@@ -30,8 +32,8 @@ async def create_envelope(
 @router.get("")
 async def list_envelopes(
     status_filter: str | None = Query(default=None, alias="status"),
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     branch_id: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
@@ -39,6 +41,8 @@ async def list_envelopes(
     _operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
 ):
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     status_value = EnvelopeStatus(status_filter) if status_filter else None
     branch_uuid = uuid.UUID(branch_id) if branch_id else None
     items, total = await svc.list_envelopes(

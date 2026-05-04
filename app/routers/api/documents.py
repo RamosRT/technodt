@@ -1,11 +1,12 @@
 import uuid
-from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_operator
 from app.db import get_session
+from app.parsing import optional_query_date
 from app.services.documents import build_documents_csv, list_documents
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -13,8 +14,8 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 @router.get("")
 async def get_documents(
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     doc_kind: str | None = None,
     status: str | None = None,
     branch_id: str | None = None,
@@ -24,6 +25,8 @@ async def get_documents(
     _operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
 ):
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     branch_uuid = uuid.UUID(branch_id) if branch_id else None
     status_value = status or None
     items, total, summary = await list_documents(
@@ -42,8 +45,8 @@ async def get_documents(
 
 @router.get("/export")
 async def export_documents(
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     doc_kind: str | None = None,
     status: str | None = None,
     branch_id: str | None = None,
@@ -51,6 +54,8 @@ async def export_documents(
     _operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
 ):
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     branch_uuid = uuid.UUID(branch_id) if branch_id else None
     status_value = status or None
     items, _, _ = await list_documents(

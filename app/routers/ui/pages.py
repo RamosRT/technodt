@@ -2,6 +2,7 @@
 import uuid
 from datetime import date
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Cookie, Depends, Form, Query, Request
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_is_admin
 from app.config import get_settings
 from app.db import get_session
+from app.parsing import optional_query_date
 from app.deps import get_one_c_client
 from app.exceptions import AppError
 import app.services.envelopes as env_svc
@@ -231,8 +233,8 @@ async def ui_create_envelope(
 async def ui_envelopes_list(
     request: Request,
     status: str | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     branch_id: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
@@ -244,6 +246,8 @@ async def ui_envelopes_list(
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
     status_value = _optional_status(status)
     branch_uuid = _optional_uuid(branch_id)
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     envelopes, total = await env_svc.list_envelopes(
         session,
         status=status_value,
@@ -419,8 +423,8 @@ async def ui_unseal_envelope(
 @router.get("/ui/documents", response_class=HTMLResponse)
 async def ui_documents_list(
     request: Request,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     doc_kind: str | None = None,
     status: str | None = None,
     branch_id: str | None = None,
@@ -433,6 +437,8 @@ async def ui_documents_list(
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
     branch_uuid = _optional_uuid(branch_id)
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     documents, total, summary = await doc_svc.list_documents(
         session,
         date_from=date_from,
@@ -643,8 +649,8 @@ async def _admin_v2_response(
 @router.get("/ui/audit", response_class=HTMLResponse)
 async def ui_audit(
     request: Request,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
     event: str | None = None,
     actor: str | None = None,
     envelope: str | None = None,
@@ -653,6 +659,8 @@ async def ui_audit(
 ):
     if not is_admin:
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
     return templates.TemplateResponse(
         request,
         "partials/audit_panel.html",
