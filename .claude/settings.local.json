@@ -68,7 +68,15 @@
       "Read(//c/Users/Ramos/AppData/Local/Android/Sdk/platform-tools/**)",
       "Bash(adb.exe shell *)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Ramos\\\\.claude\\\\skills\\\\\" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })",
-      "Bash(bash *)"
+      "Bash(bash *)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/bin/**)",
+      "Read(//c/Program Files/**)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-ItemProperty *)",
+      "PowerShell(where.exe adb 2>&1; & \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" devices 2>&1)",
+      "Bash(export JAVA_HOME=\"/e/AndroidStudio/jbr\")",
+      "Bash(./gradlew assembleDebug)"
     ]
   }
 }

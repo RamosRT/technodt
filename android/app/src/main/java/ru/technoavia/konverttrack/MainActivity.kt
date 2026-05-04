@@ -14,8 +14,11 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +42,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -67,6 +75,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -76,6 +85,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import retrofit2.HttpException
@@ -88,11 +98,23 @@ import ru.technoavia.konverttrack.data.api.SealRequest
 import ru.technoavia.konverttrack.data.api.VerifyFinishRequest
 import ru.technoavia.konverttrack.data.api.VerifyScanRequest
 import ru.technoavia.konverttrack.ui.theme.BrandBlue
+import ru.technoavia.konverttrack.ui.theme.BrandBlueMidStop
 import ru.technoavia.konverttrack.ui.theme.BrandBlueLight
 import ru.technoavia.konverttrack.ui.theme.BrandBlueMid
 import ru.technoavia.konverttrack.ui.theme.BrandRed
 import ru.technoavia.konverttrack.ui.theme.BrandGreen
 import ru.technoavia.konverttrack.ui.theme.BrandInk
+import ru.technoavia.konverttrack.ui.theme.BorderLine
+import ru.technoavia.konverttrack.ui.theme.BorderSoft
+import ru.technoavia.konverttrack.ui.theme.DangerBg
+import ru.technoavia.konverttrack.ui.theme.FgLabel
+import ru.technoavia.konverttrack.ui.theme.FgMuted
+import ru.technoavia.konverttrack.ui.theme.SuccessBg
+import ru.technoavia.konverttrack.ui.theme.SuccessGreen
+import ru.technoavia.konverttrack.ui.theme.SurfaceAlt
+import ru.technoavia.konverttrack.ui.theme.SurfaceTint
+import ru.technoavia.konverttrack.ui.theme.WarningBg
+import ru.technoavia.konverttrack.ui.theme.WarningOrange
 import ru.technoavia.konverttrack.ui.theme.KonvertTrackTheme
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -116,12 +138,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+        )
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.statusBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        window.decorView.post {
+            WindowInsetsControllerCompat(window, window.decorView).apply {
+                hide(WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
         val prefs = getSharedPreferences("konvert_track", Context.MODE_PRIVATE)
         val scannerFilter = IntentFilter().apply {
@@ -763,20 +792,19 @@ private fun LoginScreen(
                 .fillMaxSize()
                 .padding(horizontal = 22.dp),
             verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                Spacer(modifier = Modifier.height(32.dp))
                 Image(
                     painter = painterResource(R.drawable.logo_lockup),
                     contentDescription = "ТехноКонверт",
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(84.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable {
                             logoTapCount += 1
                             if (logoTapCount >= 5) {
@@ -786,75 +814,89 @@ private fun LoginScreen(
                         },
                     contentScale = ContentScale.Fit,
                 )
-                Text("Учёт передачи документов · ТСД", style = MaterialTheme.typography.labelSmall)
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Сканируйте QR входа или введите оператора и PIN",
+                    "Учёт передачи документов · ТСД",
                     style = MaterialTheme.typography.labelSmall,
-                    color = BrandInk.copy(alpha = 0.62f),
+                    color = FgMuted,
                 )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = {
-                        username = it
-                        errorText = null
-                    },
+                Spacer(modifier = Modifier.height(28.dp))
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Оператор") },
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = {
-                        password = it.filter(Char::isDigit).take(4)
-                        errorText = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("PIN-код") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    visualTransformation = PasswordVisualTransformation(),
-                )
-                if (errorText != null) {
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Имя оператора".uppercase(), style = MaterialTheme.typography.labelSmall, color = FgLabel, letterSpacing = 0.5.sp)
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = {
+                                username = it
+                                errorText = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("ivan.petrov") },
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("PIN-код".uppercase(), style = MaterialTheme.typography.labelSmall, color = FgLabel, letterSpacing = 0.5.sp)
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = {
+                                password = it.filter(Char::isDigit).take(4)
+                                errorText = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("••••") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            visualTransformation = PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                    }
+                    if (errorText != null) {
+                        ScanFeedbackBanner(errorText, isError = true)
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White)
+                        .border(1.dp, BorderSoft, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (serverUrl.isNotBlank()) SuccessGreen else BrandRed))
                     Text(
-                        text = errorText.orEmpty(),
-                        color = BrandRed,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth(),
+                        text = if (serverUrl.isNotBlank()) "Сервер: $serverUrl" else "Адрес сервера не задан",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = FgMuted,
                     )
                 }
             }
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Button(
-                    onClick = {
-                        submitLogin()
-                    },
+                    onClick = { submitLogin() },
                     enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.length == 4,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp,
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                     } else {
                         Text("Войти", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                Text(
-                    text = serverUrl.ifBlank { "Адрес сервера не задан" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = BrandInk.copy(alpha = 0.45f),
-                )
-                Text("v1.2.0 · build 1", style = MaterialTheme.typography.labelSmall, color = BrandInk.copy(alpha = 0.45f))
+                Text("v1.2.0 · build 1", style = MaterialTheme.typography.labelSmall, color = FgLabel)
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
@@ -1035,14 +1077,16 @@ private fun TsdShell(
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopBar(onOpenService = onOpenService)
+            TopBar(operator = operator, onOpenService = onOpenService)
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                SectionLabel("Действия")
                 ActionGrid(
                     isCreatingEnvelope = isCreatingEnvelope,
                     onCreateEnvelope = {
@@ -1062,11 +1106,12 @@ private fun TsdShell(
                     onOpenVerify = onOpenVerify,
                 )
                 if (createError != null) {
-                    Text(createError.orEmpty(), color = BrandRed, style = MaterialTheme.typography.bodyMedium)
+                    Text(createError.orEmpty(), color = BrandRed, style = MaterialTheme.typography.labelSmall)
                 }
+                SectionLabel("Последние")
                 RecentEnvelopeStub()
             }
-            ConnectionFooter(isOnline = isOnline)
+            ConnBanner(isOnline = isOnline)
         }
     }
 }
@@ -1135,13 +1180,19 @@ private fun RegisterScreen(
         )
     }
 
+    val sealed = envelope.status == "sealed"
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            RegisterTopBar(onBack = onBack, title = if (envelope.status == "sealed") "Конверт запечатан" else "Новый конверт")
-            if (envelope.status == "sealed") {
+            RegisterTopBar(
+                onBack = onBack,
+                title = if (sealed) "Регистрация" else "Новый конверт",
+                subtitle = if (sealed) "Конверт запечатан" else "Сканируйте документы",
+            )
+            EnvelopeHero(envelope)
+            if (sealed) {
                 SealedEnvelopeScreen(
                     envelope = envelope,
                     printMessage = printMessage,
@@ -1171,83 +1222,126 @@ private fun RegisterScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .verticalScroll(rememberScrollState()),
                 ) {
-                    EnvelopeHero(envelope)
-                    if (message != null) {
-                        Text(message, color = BrandGreen, style = MaterialTheme.typography.bodyMedium)
+                    ScanTarget(
+                        label = "Готов к сканированию",
+                        hint = "${envelope.documents.size} в конверте · сканируйте следующий",
+                        armed = true,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (message != null || sealMessage != null) {
+                        Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                            ScanFeedbackBanner(message ?: sealMessage, isError = false)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    if (error != null) {
-                        Text(error, color = BrandRed, style = MaterialTheme.typography.bodyMedium)
+                    if (error != null || sealError != null) {
+                        Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                            ScanFeedbackBanner(error ?: sealError, isError = true)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    if (sealMessage != null) {
-                        Text(sealMessage.orEmpty(), color = BrandGreen, style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SectionLabel("Документы в конверте")
                     }
-                    if (sealError != null) {
-                        Text(sealError.orEmpty(), color = BrandRed, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Text("Документы", style = MaterialTheme.typography.titleMedium)
-                    if (envelope.documents.isEmpty()) {
-                        EmptyRegisterState()
-                    } else {
-                        envelope.documents.forEach { doc ->
-                            ServiceCard {
-                                ServiceRow(doc.doc_kind, doc.doc_number)
-                                ServiceRow("Дата", doc.doc_date.toDisplayDate())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                            .background(Color.White)
+                            .padding(horizontal = 0.dp),
+                    ) {
+                        if (envelope.documents.isEmpty()) {
+                            EmptyRegisterState()
+                        } else {
+                            envelope.documents.forEachIndexed { i, doc ->
+                                if (i > 0) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
+                                }
+                                DocRow(
+                                    index = i + 1,
+                                    kind = doc.doc_kind,
+                                    number = doc.doc_number,
+                                    date = doc.doc_date.toDisplayDate(),
+                                )
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
-                Button(
-                    onClick = sealAction,
-                    enabled = !isSealing,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .padding(horizontal = 16.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
-                ) {
-                    if (isSealing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp,
+                BottomBar {
+                    Button(
+                        onClick = onBack,
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        border = BorderStroke(1.dp, BorderSoft),
+                        elevation = ButtonDefaults.buttonElevation(0.dp),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_left),
+                            contentDescription = "Назад",
+                            tint = FgMuted,
                         )
-                    } else {
-                        Text("Запечатать", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Button(
+                        onClick = sealAction,
+                        enabled = !isSealing && canSeal,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                    ) {
+                        if (isSealing) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("Запечатать", style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
             }
-            ConnectionFooter(isOnline = isOnline)
         }
     }
 }
 
 @Composable
-private fun RegisterTopBar(onBack: () -> Unit, title: String) {
+private fun RegisterTopBar(onBack: () -> Unit, title: String, subtitle: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .background(BrandInk)
+            .background(GradBlue)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_left),
                 contentDescription = "Назад",
                 tint = MaterialTheme.colorScheme.onPrimary,
             )
         }
-        Text(
-            text = title,
-            color = MaterialTheme.colorScheme.onPrimary,
-            style = MaterialTheme.typography.titleMedium,
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
     }
 }
 
@@ -1260,67 +1354,94 @@ private fun SealedEnvelopeScreen(
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        EnvelopeHero(envelope)
-        ServiceCard {
-            Text("Конверт запечатан", style = MaterialTheme.typography.titleMedium, color = BrandGreen)
-            Text("Документов: ${envelope.documents.size}", style = MaterialTheme.typography.bodyMedium)
-            Text("Можно распечатать этикетку и вернуться на главный экран", style = MaterialTheme.typography.bodyMedium)
-        }
-        if (printMessage != null) {
-            Text(printMessage, color = BrandGreen, style = MaterialTheme.typography.bodyMedium)
-        }
-        if (printError != null) {
-            Text(printError, color = BrandRed, style = MaterialTheme.typography.bodyMedium)
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        Button(
-            onClick = onPrint,
+    Column(modifier = modifier.fillMaxWidth()) {
+        Column(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(6.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                .verticalScroll(rememberScrollState())
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Распечатать этикетку", style = MaterialTheme.typography.titleMedium)
+            if (printMessage != null) ScanFeedbackBanner(printMessage, isError = false)
+            if (printError != null) ScanFeedbackBanner(printError, isError = true)
+            SectionLabel("Печать")
+            Button(
+                onClick = onPrint,
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceTint),
+                elevation = ButtonDefaults.buttonElevation(0.dp),
+                border = BorderStroke(1.dp, Color(0xFFC9DEF0)),
+            ) {
+                Text("Этикетка ZPL", style = MaterialTheme.typography.bodyMedium, color = BrandBlue)
+            }
+            SectionLabel("Состав конверта")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                    .background(Color.White),
+            ) {
+                envelope.documents.forEachIndexed { i, doc ->
+                    if (i > 0) Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
+                    DocRow(i + 1, doc.doc_kind, doc.doc_number, doc.doc_date.toDisplayDate())
+                }
+            }
         }
-        Button(
-            onClick = onDone,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(6.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = BrandInk),
-        ) {
-            Text("На главный экран", style = MaterialTheme.typography.titleMedium)
+        BottomBar {
+            Button(
+                onClick = onDone,
+                modifier = Modifier.weight(1f).height(56.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+            ) {
+                Text("Готово", style = MaterialTheme.typography.titleMedium)
+            }
         }
     }
 }
 
 @Composable
 private fun EnvelopeHero(envelope: EnvelopeDto) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(GradBlue)
+            .padding(16.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.linearGradient(listOf(BrandBlueMid, BrandBlue, BrandBlueLight)))
-                .padding(16.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(envelope.number, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
-                Text("Черновик", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f), style = MaterialTheme.typography.labelMedium)
-                Text("Документов: ${envelope.documents.size}", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
-                Text(envelope.barcode, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f), style = MaterialTheme.typography.labelSmall)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatusPill(status = envelope.status, onDark = true)
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    "Code128",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f),
+                )
+            }
+            Text(
+                envelope.number,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column {
+                    Text(
+                        "${envelope.documents.size}",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "документов",
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.65f),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
             }
         }
     }
@@ -1329,53 +1450,34 @@ private fun EnvelopeHero(envelope: EnvelopeDto) {
 @Composable
 private fun VerifyEnvelopeHero(
     envelopeNumber: String,
+    status: String,
     scannedCount: Int,
     totalCount: Int,
     allScanned: Boolean,
 ) {
-    val pulse = if (allScanned) {
-        rememberInfiniteTransition(label = "verify-complete").animateFloat(
-            initialValue = 0.72f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 700),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "verify-complete-alpha",
-        ).value
-    } else {
-        1.0f
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(GradBlue)
+            .padding(16.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.linearGradient(listOf(BrandBlueMid, BrandBlue, BrandBlueLight)))
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(envelopeNumber, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
-                Text("Сверка документов", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f), style = MaterialTheme.typography.labelMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusPill(status = status, onDark = true)
+                Spacer(modifier = Modifier.weight(1f))
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = if (allScanned) "✓ $scannedCount/$totalCount" else "$scannedCount/$totalCount",
-                    color = if (allScanned) BrandGreen else MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                if (allScanned) {
+            Text(envelopeNumber, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column {
                     Text(
-                        "Все документы считаны",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = pulse),
-                        style = MaterialTheme.typography.labelMedium,
+                        "$scannedCount/$totalCount",
+                        color = if (allScanned) BrandGreen else MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "отсканировано",
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.65f),
+                        style = MaterialTheme.typography.labelSmall,
                     )
                 }
             }
@@ -1385,39 +1487,61 @@ private fun VerifyEnvelopeHero(
 
 @Composable
 private fun EmptyRegisterState() {
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Документов пока нет", style = MaterialTheme.typography.titleMedium)
-            Text("Сканируйте документы физической кнопкой ТСД", style = MaterialTheme.typography.bodyMedium)
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(SurfaceAlt),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_package_plus),
+                contentDescription = null,
+                tint = FgLabel,
+                modifier = Modifier.size(26.dp),
+            )
         }
+        Text("Конверт пуст", style = MaterialTheme.typography.titleMedium, color = BrandInk)
+        Text("Отсканируйте первый документ", style = MaterialTheme.typography.labelSmall, color = FgMuted)
     }
 }
 
 @Composable
-private fun TopBar(onOpenService: () -> Unit) {
+private fun TopBar(operator: String, onOpenService: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .background(BrandInk)
-            .padding(horizontal = 16.dp),
+            .background(GradBlue)
+            .padding(start = 4.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Image(
-            painter = painterResource(R.drawable.logo_icon),
-            contentDescription = null,
-            modifier = Modifier.size(30.dp),
-        )
+        Box(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("ТехноКонверт", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
-            Text("ТСД · рабочее место", color = BrandBlueLight, style = MaterialTheme.typography.labelSmall)
+            Text(
+                "ТехноКонверт",
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (operator.isNotBlank()) {
+                Text(
+                    operator,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
-        IconButton(onClick = onOpenService) {
+        IconButton(
+            onClick = onOpenService,
+            modifier = Modifier.size(44.dp),
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_settings),
                 contentDescription = "Сервисное меню",
@@ -1485,62 +1609,93 @@ private fun ServiceScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("Сервисное меню", style = MaterialTheme.typography.titleLarge)
-                ServiceCard {
-                    ServiceRow("Оператор", operator)
-                    ServiceRow("Подключение", if (isOnline) "Сервер онлайн" else "Нет подключения")
-                }
-                ServiceCard {
-                    SettingsField(
-                        label = "Адрес сервера",
-                        value = editableServerUrl,
-                        onValueChange = { editableServerUrl = it },
-                        placeholder = "http://127.0.0.1:8080",
-                    )
-                    SettingsDropdown(
-                        label = "Филиал отправки",
-                        value = editableBranch,
-                        onValueChange = {
-                            editableBranchId = it.id
-                            editableBranch = it.label
-                        },
-                        options = branches,
-                        placeholder = "Не выбран",
-                    )
-                    SettingsDropdown(
-                        label = "Подписант",
-                        value = editableSigner,
-                        onValueChange = {
-                            editableSignerId = it.id
-                            editableSigner = it.label
-                        },
-                        options = signers,
-                        placeholder = "Не выбран",
-                    )
-                    SettingsDropdown(
-                        label = "ZPL-принтер",
-                        value = editablePrinter,
-                        onValueChange = {
-                            editablePrinterId = it.id
-                            editablePrinter = it.label
-                        },
-                        options = printers,
-                        placeholder = "Не выбран",
-                    )
-                    if (listsLoading) {
-                        Text("Загрузка списков", style = MaterialTheme.typography.labelSmall, color = BrandInk.copy(alpha = 0.55f))
-                    }
-                    if (listError != null) {
-                        Text(listError.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = BrandRed)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionLabel("Учётная запись")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                            .background(Color.White),
+                    ) {
+                        ServiceInfoRow("Оператор", operator)
                     }
                 }
-                ServiceCard {
-                    ServiceRow("ТСД", android.os.Build.MODEL ?: "Android")
-                    ServiceRow("Производитель", android.os.Build.MANUFACTURER ?: "Неизвестно")
-                    ServiceRow("Версия", "v1.2.0 · build 1")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionLabel("Параметры отправки")
+                    ServiceCard {
+                        SettingsField(
+                            label = "Адрес сервера",
+                            value = editableServerUrl,
+                            onValueChange = { editableServerUrl = it },
+                            placeholder = "http://127.0.0.1:8080",
+                        )
+                        SettingsDropdown(
+                            label = "Филиал отправки",
+                            value = editableBranch,
+                            onValueChange = {
+                                editableBranchId = it.id
+                                editableBranch = it.label
+                            },
+                            options = branches,
+                            placeholder = "Не выбран",
+                        )
+                        SettingsDropdown(
+                            label = "Подписант",
+                            value = editableSigner,
+                            onValueChange = {
+                                editableSignerId = it.id
+                                editableSigner = it.label
+                            },
+                            options = signers,
+                            placeholder = "Не выбран",
+                        )
+                        SettingsDropdown(
+                            label = "ZPL-принтер",
+                            value = editablePrinter,
+                            onValueChange = {
+                                editablePrinterId = it.id
+                                editablePrinter = it.label
+                            },
+                            options = printers,
+                            placeholder = "Не выбран",
+                        )
+                        if (listsLoading) {
+                            Text("Загрузка...", style = MaterialTheme.typography.labelSmall, color = FgLabel)
+                        }
+                        if (listError != null) {
+                            Text(listError.orEmpty(), style = MaterialTheme.typography.labelSmall, color = BrandRed)
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionLabel("Об устройстве")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                            .background(Color.White),
+                    ) {
+                        ServiceInfoRow("ТСД", android.os.Build.MODEL ?: "Android")
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
+                        ServiceInfoRow("Версия", "v1.2.0 · build 1")
+                    }
+                }
+            }
+            BottomBar {
+                Button(
+                    onClick = onLogout,
+                    modifier = Modifier.height(56.dp).weight(0.4f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerBg),
+                    elevation = ButtonDefaults.buttonElevation(0.dp),
+                    border = BorderStroke(1.dp, Color(0xFFF3C2C2)),
+                ) {
+                    Text("Выйти", style = MaterialTheme.typography.bodyMedium, color = BrandRed)
                 }
                 Button(
                     onClick = {
@@ -1554,26 +1709,14 @@ private fun ServiceScreen(
                             editablePrinter.trim(),
                         )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.weight(0.6f).height(56.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                 ) {
                     Text("Сохранить", style = MaterialTheme.typography.titleMedium)
                 }
-                Button(
-                    onClick = onLogout,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandRed),
-                ) {
-                    Text("Выйти", style = MaterialTheme.typography.titleMedium)
-                }
             }
-            ConnectionFooter(isOnline = isOnline)
+            ConnBanner(isOnline = isOnline)
         }
     }
 }
@@ -1663,11 +1806,11 @@ private fun ServiceTopBar(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .background(BrandInk)
+            .background(GradBlue)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_left),
                 contentDescription = "Назад",
@@ -1675,7 +1818,7 @@ private fun ServiceTopBar(onBack: () -> Unit) {
             )
         }
         Text(
-            text = "Настройки",
+            text = "Сервисное меню",
             color = MaterialTheme.colorScheme.onPrimary,
             style = MaterialTheme.typography.titleMedium,
         )
@@ -1708,28 +1851,42 @@ private fun ServiceRow(title: String, value: String) {
 }
 
 @Composable
-private fun ConnectionFooter(isOnline: Boolean) {
-    val dotColor = if (isOnline) BrandGreen else MaterialTheme.colorScheme.error
-    val text = if (isOnline) "Сервер онлайн" else "Нет подключения"
-
+private fun ServiceInfoRow(title: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(dotColor),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text, style = MaterialTheme.typography.labelSmall, color = BrandInk.copy(alpha = 0.55f))
-        }
-        Text("v1.2.0 · build 1", style = MaterialTheme.typography.labelSmall, color = BrandInk.copy(alpha = 0.45f))
+        Text(title, style = MaterialTheme.typography.bodyMedium, color = BrandInk)
+        Text(value, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+    }
+}
+
+@Composable
+private fun ConnBanner(isOnline: Boolean, label: String? = null) {
+    val dotColor = if (isOnline) SuccessGreen else BrandRed
+    val text = label ?: if (isOnline) "Сеть · 1С · Принтер готовы" else "Нет связи с сервером"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                drawLine(BorderLine, start = Offset(0f, 0f), end = Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+            }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(dotColor),
+        )
+        Text(text, style = MaterialTheme.typography.labelSmall, color = FgLabel)
+        Spacer(modifier = Modifier.weight(1f))
+        Text("v1.2.0", style = MaterialTheme.typography.labelSmall, color = FgLabel.copy(alpha = 0.55f))
     }
 }
 
@@ -1739,19 +1896,21 @@ private fun ActionGrid(
     onCreateEnvelope: () -> Unit,
     onOpenVerify: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         ActionTile(
             title = if (isCreatingEnvelope) "Создание" else "Новый конверт",
             subtitle = if (isCreatingEnvelope) "Подождите" else "Регистрация",
             icon = R.drawable.ic_package_plus,
             modifier = Modifier.weight(1f),
+            isLoading = isCreatingEnvelope,
             onClick = onCreateEnvelope,
         )
         ActionTile(
             title = "Проверить",
-            subtitle = "Сверка",
+            subtitle = "Верификация",
             icon = R.drawable.ic_scan_line,
             modifier = Modifier.weight(1f),
+            altTint = true,
             onClick = onOpenVerify,
         )
     }
@@ -1769,26 +1928,36 @@ private fun VerifyStartScreen(
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            RegisterTopBar(onBack = onBack, title = "Сверка конверта")
+            RegisterTopBar(onBack = onBack, title = "Верификация", subtitle = "Сканируйте штрихкод конверта")
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                ServiceCard {
-                    Text("Сканируйте штрихкод конверта", style = MaterialTheme.typography.titleMedium)
-                    Text("После сканирования откроется список документов для сверки", style = MaterialTheme.typography.bodyMedium)
-                }
-                if (message != null) {
-                    Text(message, color = BrandGreen, style = MaterialTheme.typography.bodyMedium)
-                }
-                if (error != null) {
-                    Text(error, color = BrandRed, style = MaterialTheme.typography.bodyMedium)
+                ScanTarget(
+                    label = "Наведите сканер на штрихкод конверта",
+                    hint = "После сканирования откроется список документов",
+                    armed = error == null,
+                )
+                if (message != null) ScanFeedbackBanner(message, isError = false)
+                if (error != null) ScanFeedbackBanner(error, isError = true)
+            }
+            BottomBar {
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier.size(56.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                    border = BorderStroke(1.dp, BorderSoft),
+                    elevation = ButtonDefaults.buttonElevation(0.dp),
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Icon(painter = painterResource(R.drawable.ic_arrow_left), contentDescription = "Назад", tint = FgMuted)
                 }
             }
-            ConnectionFooter(isOnline = isOnline)
+            ConnBanner(isOnline = isOnline)
         }
     }
 }
@@ -1812,85 +1981,106 @@ private fun VerifyScreen(
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            RegisterTopBar(onBack = onBack, title = "Сверка")
+            RegisterTopBar(
+                onBack = onBack,
+                title = "Верификация",
+                subtitle = "$scannedCount/$totalCount отсканировано",
+            )
+            VerifyEnvelopeHero(
+                envelopeNumber = envelope.number,
+                status = envelope.status,
+                scannedCount = scannedCount,
+                totalCount = totalCount,
+                allScanned = allScanned,
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .verticalScroll(rememberScrollState()),
             ) {
-                VerifyEnvelopeHero(
-                    envelopeNumber = envelope.number,
-                    scannedCount = scannedCount,
-                    totalCount = totalCount,
-                    allScanned = allScanned,
-                )
+                if (!allScanned) {
+                    ScanTarget(
+                        label = "Сканируйте следующий документ",
+                        hint = "Осталось ${missingCount}",
+                        armed = true,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 if (message != null) {
-                    Text(message, color = BrandGreen, style = MaterialTheme.typography.bodyMedium)
+                    Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                        ScanFeedbackBanner(message, isError = false)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
                 if (error != null) {
-                    Text(error, color = BrandRed, style = MaterialTheme.typography.bodyMedium)
+                    Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                        ScanFeedbackBanner(error, isError = true)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-                Text("Документы конверта", style = MaterialTheme.typography.titleMedium)
+                Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                    SectionLabel("Состав конверта")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 if (envelope.documents.isEmpty()) {
-                    ServiceCard {
-                        Text("В конверте нет документов", style = MaterialTheme.typography.bodyMedium)
+                    Box(modifier = Modifier.padding(14.dp)) {
+                        Text("В конверте нет документов", style = MaterialTheme.typography.bodyMedium, color = FgMuted)
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 14.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                            .background(Color.White),
                     ) {
-                        items(envelope.documents, key = { it.id }) { doc ->
-                            Card(
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (doc.scanned_at_verification != null) {
-                                        BrandGreen.copy(alpha = 0.10f)
-                                    } else {
-                                        BrandRed.copy(alpha = 0.08f)
-                                    },
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    ServiceRow(doc.doc_kind, doc.doc_number)
-                                    ServiceRow("Дата", doc.doc_date.toDisplayDate())
-                                    ServiceRow(
-                                        "Статус",
-                                        if (doc.scanned_at_verification != null) "Считан" else "Не считан",
-                                    )
-                                    if (doc.scanned_at_verification != null) {
-                                        ServiceRow("Считан в", doc.scanned_at_verification.replace("T", " ").take(16))
-                                    }
-                                }
-                            }
+                        envelope.documents.forEachIndexed { i, doc ->
+                            if (i > 0) Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
+                            DocRow(
+                                index = i + 1,
+                                kind = doc.doc_kind,
+                                number = doc.doc_number,
+                                date = doc.doc_date.toDisplayDate(),
+                                scanned = doc.scanned_at_verification != null,
+                            )
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(14.dp))
             }
-            Button(
-                onClick = onFinish,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(6.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (missingCount == 0) BrandGreen else BrandRed,
-                ),
-            ) {
-                Text(
-                    if (missingCount == 0) "Завершить сверку" else "Завершить с расхождением",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+            BottomBar {
+                if (allScanned) {
+                    Button(
+                        onClick = onFinish,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    ) {
+                        Text("Завершить сверку", style = MaterialTheme.typography.titleMedium)
+                    }
+                } else {
+                    Button(
+                        onClick = onBack,
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        border = BorderStroke(1.dp, BorderSoft),
+                        elevation = ButtonDefaults.buttonElevation(0.dp),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Icon(painter = painterResource(R.drawable.ic_arrow_left), contentDescription = "Назад", tint = FgMuted)
+                    }
+                    Button(
+                        onClick = onFinish,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandRed),
+                    ) {
+                        Text("С расхождением", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            ConnectionFooter(isOnline = isOnline)
         }
     }
 }
@@ -1901,55 +2091,319 @@ private fun ActionTile(
     subtitle: String,
     icon: Int,
     modifier: Modifier = Modifier,
+    isLoading: Boolean = false,
+    altTint: Boolean = false,
     onClick: () -> Unit,
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.height(124.dp),
-        shape = RoundedCornerShape(8.dp),
+        modifier = modifier.height(110.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, BorderSoft),
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.linearGradient(listOf(BrandBlueMid, BrandBlue, BrandBlueLight)))
-                .padding(12.dp),
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.14f)),
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (altTint) SuccessBg else SurfaceTint),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(20.dp),
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = if (altTint) SuccessGreen else BrandBlue,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = null,
+                        tint = if (altTint) SuccessGreen else BrandBlue,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             Column {
-                Spacer(modifier = Modifier.weight(1f))
-                Text(title, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = BrandInk,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = FgMuted,
+                )
+            }
+        }
+    }
+}
+
+private val GradBlue = Brush.horizontalGradient(
+    0f to Color(0xFF1B2848),
+    0.55f to Color(0xFF243560),
+    1f to Color(0xFF2874B9),
+)
+
+private val statusLabels = mapOf(
+    "draft" to "Черновик",
+    "sealed" to "Запечатан",
+    "verified" to "Сверен",
+    "verified_with_discrepancy" to "С расхождением",
+)
+
+@Composable
+private fun StatusPill(status: String, onDark: Boolean = false) {
+    val (bg, fg, dotColor) = when (status) {
+        "draft" -> Triple(Color(0xFFF3F4F6), FgMuted, FgLabel)
+        "sealed" -> Triple(WarningBg, WarningOrange, WarningOrange)
+        "verified" -> Triple(SuccessBg, SuccessGreen, SuccessGreen)
+        "verified_with_discrepancy" -> Triple(DangerBg, BrandRed, BrandRed)
+        else -> Triple(Color(0xFFF3F4F6), FgMuted, FgLabel)
+    }
+    val pillBg = if (onDark) Color.White.copy(alpha = 0.18f) else bg
+    val pillFg = if (onDark) Color.White else fg
+    val pillDot = if (onDark) Color.White else dotColor
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(pillBg)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(pillDot))
+        Text(
+            statusLabels[status] ?: status,
+            style = MaterialTheme.typography.labelMedium,
+            color = pillFg,
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = FgLabel,
+        letterSpacing = 0.6.sp,
+        modifier = Modifier.padding(bottom = 0.dp),
+    )
+}
+
+@Composable
+private fun ScanTarget(label: String, hint: String, armed: Boolean = true) {
+    val infiniteTransition = rememberInfiniteTransition(label = "scan-pulse")
+    val glow by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (armed) 1f else 0f,
+        animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
+        label = "scan-glow",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                drawRoundRect(
+                    color = Color(0xFF1D71B8).copy(alpha = if (armed) 0.5f + glow * 0.5f else 0.4f),
+                    style = Stroke(width = 1.5.dp.toPx(), pathEffect = dashEffect),
+                    cornerRadius = CornerRadius(10.dp.toPx()),
+                )
+            }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(SurfaceTint),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_scan_line),
+                contentDescription = null,
+                tint = BrandBlue,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = BrandInk, fontWeight = FontWeight.Medium)
+            Text(hint, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+        }
+    }
+}
+
+@Composable
+private fun DocRow(
+    index: Int,
+    kind: String,
+    number: String,
+    date: String,
+    scanned: Boolean? = null,
+    showRemove: Boolean = false,
+    onRemove: (() -> Unit)? = null,
+) {
+    val bg = when (scanned) {
+        true -> SuccessBg
+        false -> Color(0xFFFCE8E8)
+        null -> Color.White
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "$index",
+            style = MaterialTheme.typography.labelSmall,
+            color = FgLabel,
+            modifier = Modifier.width(18.dp),
+        )
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(SurfaceTint),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_package_plus),
+                contentDescription = null,
+                tint = BrandBlue,
+                modifier = Modifier.size(13.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(SurfaceTint)
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                ) {
+                    Text(kind, style = MaterialTheme.typography.labelMedium, color = BrandBlue)
+                }
+                Text(
+                    "№$number",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (scanned == false) FgMuted else BrandInk,
+                )
+            }
+            Text(date, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+        }
+        when {
+            scanned == true -> Icon(
+                painter = painterResource(R.drawable.ic_scan_line),
+                contentDescription = "Считан",
+                tint = SuccessGreen,
+                modifier = Modifier.size(18.dp),
+            )
+            scanned == false -> Icon(
+                painter = painterResource(R.drawable.ic_scan_line),
+                contentDescription = "Не считан",
+                tint = BorderSoft,
+                modifier = Modifier.size(18.dp),
+            )
+            showRemove && onRemove != null -> IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_left),
+                    contentDescription = "Удалить",
+                    tint = BrandRed,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RecentEnvelopeStub() {
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
+private fun ScanFeedbackBanner(message: String?, isError: Boolean) {
+    if (message == null) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isError) DangerBg else SuccessBg)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Последние", style = MaterialTheme.typography.titleMedium)
-            Text("Конверты появятся после подключения API", style = MaterialTheme.typography.bodyMedium)
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (isError) BrandRed else SuccessGreen),
+        )
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (isError) BrandRed else SuccessGreen,
+        )
+    }
+}
+
+@Composable
+private fun BottomBar(content: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .drawBehind {
+                drawLine(Color(0xFFDDE4EF), start = Offset(0f, 0f), end = Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun RecentEnvelopeStub() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+            .background(Color.White)
+            .padding(40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(SurfaceAlt),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_package_plus),
+                contentDescription = null,
+                tint = FgLabel,
+                modifier = Modifier.size(26.dp),
+            )
         }
+        Text("Конвертов пока нет", style = MaterialTheme.typography.titleMedium, color = BrandInk)
+        Text("Конверты появятся после подключения", style = MaterialTheme.typography.labelSmall, color = FgMuted)
     }
 }
 

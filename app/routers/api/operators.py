@@ -1,4 +1,6 @@
+import socket
 import uuid
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +12,21 @@ from app.services import printing
 from app.services.operators import delete_operator, ensure_operator, list_operators, patch_operator
 
 router = APIRouter(prefix="/api/operators", tags=["operators"])
+
+
+def _lan_server_url(server_url: str) -> str:
+    """Replace 127.0.0.1/localhost with the machine's LAN IP so QR codes work over WiFi."""
+    parsed = urlparse(server_url)
+    if parsed.hostname in ("127.0.0.1", "localhost", "::1"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                lan_ip = s.getsockname()[0]
+            netloc = parsed.netloc.replace(parsed.hostname, lan_ip)
+            parsed = parsed._replace(netloc=netloc)
+        except Exception:
+            pass
+    return urlunparse(parsed)
 
 
 def _mm_to_dots(mm: int, dpi: int = 200) -> int:
@@ -119,7 +136,7 @@ async def operator_auth_label_pdf(
     if op is None:
         return Response("Оператор не найден", status_code=404)
     pdf = await printing.render_operator_auth_label_pdf(
-        server_url=server_url,
+        server_url=_lan_server_url(server_url),
         username=op.username,
         password=password,
     )

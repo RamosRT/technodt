@@ -10,12 +10,15 @@ private val LightColors = lightColorScheme(
     onPrimary = Color.White,
     secondary = BrandInk,
     onSecondary = Color.White,
-    tertiary = BrandGreen,
+    tertiary = SuccessGreen,
+    onTertiary = Color.White,
     background = SurfaceBase,
     onBackground = BrandInk,
     surface = SurfaceCard,
     onSurface = BrandInk,
+    surfaceVariant = SurfaceTint,
     error = BrandRed,
+    onError = Color.White,
 )
 
 @Composable
