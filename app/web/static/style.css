@@ -1979,7 +1979,7 @@ body.is-login .main-content::after {
 }
 
 .print-actions {
-  margin: 0 0 20px;
+  margin: 12px 0 20px;
   gap: 14px;
 }
 
