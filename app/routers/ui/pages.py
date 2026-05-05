@@ -1,6 +1,6 @@
 """UI routes — renders Jinja2 templates for the single-page HTMX frontend."""
 import uuid
-from datetime import date
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote, unquote
@@ -8,7 +8,7 @@ from urllib.parse import quote, unquote
 from fastapi import APIRouter, Cookie, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.services.dictionaries as dict_svc
@@ -20,7 +20,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.deps import get_one_c_client
 from app.exceptions import AppError
-from app.models import AuditLog, Branch, Envelope, EnvelopeStatus, Signer
+from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Operator, Signer
 from app.parsing import optional_query_date
 from app.services import documents as doc_svc
 from app.services import operators as op_svc
@@ -34,6 +34,13 @@ STATUS_LABELS = {
     "sealed": "Запечатан",
     "verified": "Верифицирован",
     "verified_with_discrepancy": "Расхождение",
+}
+
+DOCUMENT_STATUS_LABELS = {
+    "verified": "Верифицирован",
+    "in_transit": "В пути",
+    "missing": "Недостача",
+    "draft": "Черновик",
 }
 
 router = APIRouter(tags=["ui"])
@@ -175,6 +182,162 @@ async def _envelope_card_context(
     }
 
 
+def _event_icon(event: str) -> str:
+    if event == "verify_finish":
+        return "check-circle-2"
+    if event in {"add_doc", "create"}:
+        return "file-plus-2"
+    if event == "seal":
+        return "lock"
+    if event == "remove_doc":
+        return "file-minus-2"
+    if event == "verify_scan":
+        return "scan-line"
+    return "clock-3"
+
+
+def _event_tone(event: str) -> str:
+    if event == "verify_finish":
+        return "green"
+    if event in {"seal", "verify_scan"}:
+        return "blue"
+    if event == "remove_doc":
+        return "red"
+    if event in {"create", "add_doc"}:
+        return "amber"
+    return "blue"
+
+
+def _event_title(event: str, payload: dict | None, envelope_number: str | None) -> str:
+    payload = payload or {}
+    if event == "create":
+        return f"Создан конверт {envelope_number or ''}".strip()
+    if event == "add_doc":
+        doc = payload.get("doc_number") or payload.get("doc_guid") or "документ"
+        return f"Добавлен документ {doc}"
+    if event == "remove_doc":
+        doc = payload.get("doc_number") or payload.get("doc_guid") or "документ"
+        return f"Удален документ {doc}"
+    if event == "seal":
+        return f"Конверт {envelope_number or ''} запечатан".strip()
+    if event == "verify_finish":
+        return f"Завершена верификация {envelope_number or ''}".strip()
+    if event == "verify_scan":
+        return f"Отсканирован документ в {envelope_number or 'конверте'}"
+    return f"Событие: {event}"
+
+
+async def _dashboard_context(session: AsyncSession, *, is_admin: bool) -> dict:
+    now = datetime.now(timezone.utc)
+    day_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    day_end = datetime.combine(now.date(), time.max, tzinfo=timezone.utc)
+
+    draft_with_docs_subq = (
+        select(Envelope.id)
+        .join(EnvelopeDocument, EnvelopeDocument.envelope_id == Envelope.id)
+        .where(Envelope.status == EnvelopeStatus.draft)
+        .group_by(Envelope.id)
+        .having(func.count(EnvelopeDocument.id) > 1)
+        .subquery()
+    )
+    new_envelopes_total = (
+        await session.execute(select(func.count()).select_from(draft_with_docs_subq))
+    ).scalar_one()
+    new_envelopes_today = (
+        await session.execute(
+            select(func.count())
+            .select_from(draft_with_docs_subq)
+            .join(Envelope, Envelope.id == draft_with_docs_subq.c.id)
+            .where(Envelope.created_at >= day_start, Envelope.created_at <= day_end)
+        )
+    ).scalar_one()
+
+    awaiting_verification_total = (
+        await session.execute(
+            select(func.count(EnvelopeDocument.id))
+            .join(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
+            .where(
+                Envelope.status == EnvelopeStatus.sealed,
+                EnvelopeDocument.scanned_at_verification.is_(None),
+            )
+        )
+    ).scalar_one()
+
+    documents_total = (await session.execute(select(func.count(EnvelopeDocument.id)))).scalar_one()
+    documents_today = (
+        await session.execute(
+            select(func.count(EnvelopeDocument.id))
+            .where(
+                EnvelopeDocument.added_at >= day_start,
+                EnvelopeDocument.added_at <= day_end,
+            )
+        )
+    ).scalar_one()
+
+    discrepancies_total = (
+        await session.execute(
+            select(func.count(EnvelopeDocument.id))
+            .join(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
+            .where(
+                Envelope.status == EnvelopeStatus.verified_with_discrepancy,
+                EnvelopeDocument.scanned_at_verification.is_(None),
+            )
+        )
+    ).scalar_one()
+
+    queue_rows, _ = await env_svc.list_envelopes(
+        session,
+        status=EnvelopeStatus.sealed,
+        page=1,
+        page_size=5,
+    )
+    latest_documents, _, _summary = await doc_svc.list_documents(session, page=1, page_size=5)
+
+    activity_feed: list[dict] = []
+    if is_admin:
+        activity_rows = list(
+            (
+                await session.execute(
+                    select(AuditLog, Envelope.number)
+                    .outerjoin(Envelope, Envelope.id == AuditLog.envelope_id)
+                    .order_by(AuditLog.at.desc())
+                    .limit(5)
+                )
+            ).all()
+        )
+        for ev, envelope_number in activity_rows:
+            activity_feed.append(
+                {
+                    "title": _event_title(ev.event, ev.payload, envelope_number),
+                    "actor": ev.actor,
+                    "time": ev.at,
+                    "icon": _event_icon(ev.event),
+                    "tone": _event_tone(ev.event),
+                }
+            )
+
+    total_envelopes = (await session.execute(select(func.count(Envelope.id)))).scalar_one()
+    total_operators = (await session.execute(select(func.count(Operator.id)))).scalar_one()
+    return {
+        "dashboard": {
+            "new_envelopes_total": new_envelopes_total,
+            "new_envelopes_today": new_envelopes_today,
+            "awaiting_verification_total": awaiting_verification_total,
+            "documents_total": documents_total,
+            "documents_today": documents_today,
+            "discrepancies_total": discrepancies_total,
+            "queue_rows": queue_rows,
+            "latest_documents": latest_documents,
+            "activity_feed": activity_feed,
+            "status_labels": STATUS_LABELS,
+            "doc_status_labels": DOCUMENT_STATUS_LABELS,
+            "total_envelopes": total_envelopes,
+            "total_operators": total_operators,
+            "server_time": now,
+        }
+    }
+
+
 # ─── Root ────────────────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -182,8 +345,12 @@ async def index(
     request: Request,
     operator: str | None = Depends(_operator),
     is_admin: bool = Depends(get_is_admin),
+    session: AsyncSession = Depends(get_session),
 ):
-    return templates.TemplateResponse(request, "index.html", {"operator": operator, "is_admin": is_admin})
+    context = {"operator": operator, "is_admin": is_admin}
+    if operator:
+        context.update(await _dashboard_context(session, is_admin=is_admin))
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 # ─── Operator ────────────────────────────────────────────────────────────────
@@ -228,18 +395,16 @@ async def set_operator(
                 status_code=401,
             )
     await session.commit()
-    response = templates.TemplateResponse(
-        request,
-        "index.html",
-        {"operator": name, "is_admin": op.is_admin and op.is_active},
-    )
+    response = HTMLResponse(status_code=204)
+    response.headers["HX-Refresh"] = "true"
     response.set_cookie("operator_name", quote(name), httponly=True, samesite="lax")
     return response
 
 
 @router.post("/ui/operator/clear", response_class=HTMLResponse)
 async def clear_operator(request: Request):
-    response = templates.TemplateResponse(request, "index.html", {"operator": None})
+    response = HTMLResponse(status_code=204)
+    response.headers["HX-Refresh"] = "true"
     response.delete_cookie("operator_name")
     return response
 

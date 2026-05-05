@@ -30,6 +30,35 @@ document.addEventListener("keydown", () => {
   if (SCANNER && !isUserInput(document.activeElement)) SCANNER.focus();
 });
 
+// ─── Server time clock (for admin strip) ────────────────────────────────
+function initServerClock() {
+  const el = document.getElementById("server-time");
+  if (!el) return;
+  const iso = el.getAttribute("data-server-iso");
+  if (!iso) return;
+  const server0Ms = Date.parse(iso);
+  if (Number.isNaN(server0Ms)) return;
+  const client0Ms = Date.now();
+
+  const pad2 = (n) => String(n).padStart(2, "0");
+  // Render in local timezone (server_time provided as UTC ISO, but Date() converts
+  // to the browser's local timezone).
+  const formatLocal = (d) =>
+    `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())} ` +
+    `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
+
+  const tick = () => {
+    const serverNowMs = server0Ms + (Date.now() - client0Ms);
+    el.textContent = formatLocal(new Date(serverNowMs));
+  };
+
+  tick();
+  setInterval(tick, 1000);
+}
+
+document.addEventListener("DOMContentLoaded", initServerClock);
+document.body.addEventListener("htmx:afterSwap", initServerClock);
+
 function ensureFocus() {
   if (App.mode === "idle") return;          // login screen — don't interfere
   if (isUserInput(document.activeElement)) return; // user is in a form field

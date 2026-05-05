@@ -4,7 +4,7 @@
 {% if not operator %}
 <div class="operator-prompt">
   <div class="login-brand">
-    <span class="login-logo-mark"><img src="/static/icon.png" alt=""></span>
+    <span class="login-logo-mark"><img src="/static/app_icon.png" alt=""></span>
     <span>ТехноКонверт</span>
   </div>
   <h2>Вход в систему</h2>
@@ -30,9 +30,11 @@
 </div>
 {% else %}
 <div class="welcome-panel">
-  <div class="welcome-copy">
-    <h2>Регистрация и проверка конвертов</h2>
-    <p>Создавайте конверты, проверяйте их подлинность и управляйте документами в едином защищенном контуре.</p>
+  <div class="welcome-head">
+    <div class="welcome-copy">
+      <h2>Регистрация и проверка конвертов</h2>
+      <p>Создавайте конверты, проверяйте их подлинность и управляйте документами в едином защищенном контуре.</p>
+    </div>
   </div>
   <div class="quick-actions">
     <button class="btn btn-primary" hx-post="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
@@ -48,23 +50,135 @@
             onclick="setMode('idle')"><i data-lucide="file-text"></i> Документы</button>
     {% endif %}
   </div>
-  <div class="dashboard-grid">
-    <section class="dashboard-card">
-      <i data-lucide="package-plus"></i>
-      <strong>Регистрация</strong>
-      <span>Сканирование документов и печать описи</span>
+
+  <div class="kpi-grid">
+    <section class="kpi-card kpi-clickable"
+             hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
+             onclick="setMode('idle')">
+      <div class="kpi-icon kpi-blue"><i data-lucide="mail-plus"></i></div>
+      <div class="kpi-text">
+        <span>Новые конверты</span>
+        <strong>{{ dashboard.new_envelopes_total }}</strong>
+        <em>+{{ dashboard.new_envelopes_today }} за сегодня</em>
+      </div>
     </section>
-    <section class="dashboard-card">
-      <i data-lucide="scan-line"></i>
-      <strong>Верификация</strong>
-      <span>Проверка состава конверта при получении</span>
+    <section class="kpi-card kpi-clickable"
+             hx-get="/ui/documents?status=in_transit" hx-target="#main-area" hx-swap="innerHTML"
+             onclick="setMode('idle')">
+      <div class="kpi-icon kpi-amber"><i data-lucide="clock-3"></i></div>
+      <div class="kpi-text">
+        <span>Ожидают проверки</span>
+        <strong>{{ dashboard.awaiting_verification_total }}</strong>
+      </div>
     </section>
-    <section class="dashboard-card">
-      <i data-lucide="book-open"></i>
-      <strong>Справочники</strong>
-      <span>Филиалы, подписанты и рабочие параметры</span>
+    <section class="kpi-card kpi-clickable"
+             hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
+             onclick="setMode('idle')">
+      <div class="kpi-icon kpi-green"><i data-lucide="file-check-2"></i></div>
+      <div class="kpi-text">
+        <span>Всего документов</span>
+        <strong>{{ dashboard.documents_total }}</strong>
+        <em>+{{ dashboard.documents_today }} за сегодня</em>
+      </div>
+    </section>
+    <section class="kpi-card kpi-clickable"
+             hx-get="/ui/documents?status=missing" hx-target="#main-area" hx-swap="innerHTML"
+             onclick="setMode('idle')">
+      <div class="kpi-icon kpi-red"><i data-lucide="shield-alert"></i></div>
+      <div class="kpi-text">
+        <span>Ошибки / исключения</span>
+        <strong>{{ dashboard.discrepancies_total }}</strong>
+      </div>
     </section>
   </div>
+
+  <div class="ops-grid">
+    <section class="ops-card">
+      <header>
+        <h3>Очередь на верификацию <span class="ops-count">{{ dashboard.queue_rows | length }}</span></h3>
+        <button type="button" class="ops-open-btn"
+                hx-get="/ui/envelopes?status=sealed" hx-target="#main-area" hx-swap="innerHTML"
+                onclick="setMode('idle')"><i data-lucide="chevron-right"></i></button>
+      </header>
+      <table class="ops-table">
+        <thead><tr><th>Номер</th><th>Отправитель</th><th>Создан</th><th>Статус</th></tr></thead>
+        <tbody>
+          {% for env in dashboard.queue_rows %}
+          {% set st = env.status.value if env.status.value is defined else env.status %}
+          <tr class="ops-click-row" hx-get="/ui/envelopes/{{ env.id }}/card" hx-target="#main-area" hx-swap="innerHTML">
+            <td>{{ env.number }}</td>
+            <td>{{ env.origin_branch_name or "—" }}</td>
+            <td>{{ env.created_at.strftime('%d.%m %H:%M') }}</td>
+            <td><span class="mini-chip chip-wait">{{ dashboard.status_labels.get(st, st) }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="ops-empty">Нет конвертов в очереди</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <a class="ops-link" href="/"
+         hx-get="/ui/verify" hx-target="#main-area" hx-swap="innerHTML"
+         onclick="setMode('verify')"><span>Перейти к верификации</span><i data-lucide="arrow-right"></i></a>
+    </section>
+
+    <section class="ops-card">
+      <header>
+        <h3>Последние документы</h3>
+        <button type="button" class="ops-open-btn"
+                hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
+                onclick="setMode('idle')"><i data-lucide="chevron-right"></i></button>
+      </header>
+      <table class="ops-table">
+        <thead><tr><th>Документ</th><th>Конверт</th><th>Добавлен</th><th>Статус</th></tr></thead>
+        <tbody>
+          {% for doc in dashboard.latest_documents %}
+          <tr>
+            <td>{{ doc.doc_kind or "Документ" }} {% if doc.doc_number %}{{ doc.doc_number }}{% endif %}</td>
+            <td>{{ doc.envelope_number }}</td>
+            <td>{{ doc.added_at.strftime('%d.%m %H:%M') if doc.added_at else "—" }}</td>
+            <td><span class="mini-chip chip-add">{{ dashboard.doc_status_labels.get(doc.status, doc.status) }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="ops-empty">Документы не найдены</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <a class="ops-link" href="/"
+         hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
+         onclick="setMode('idle')"><span>Перейти к документам</span><i data-lucide="arrow-right"></i></a>
+    </section>
+
+    {% if is_admin %}
+    <section class="ops-card">
+      <header><h3>Журнал активности</h3></header>
+      <ul class="activity-list">
+        {% for ev in dashboard.activity_feed %}
+        <li>
+          <i class="al-dot al-{{ ev.tone }}" data-lucide="{{ ev.icon }}"></i>
+          <div><strong>{{ ev.title }}</strong><span>{{ ev.actor }}</span></div>
+          <time>{{ ev.time.strftime('%H:%M') }}</time>
+        </li>
+        {% else %}
+        <li><div><strong>События отсутствуют</strong><span>—</span></div><time>—</time></li>
+        {% endfor %}
+      </ul>
+      <a class="ops-link" href="/"
+         hx-get="/ui/admin" hx-target="#main-area" hx-swap="innerHTML"
+         onclick="setMode('idle')"><span>Перейти в журнал</span><i data-lucide="arrow-right"></i></a>
+    </section>
+    {% endif %}
+  </div>
+
+  {% if is_admin %}
+  <div class="status-strip">
+    <div class="status-item"><i data-lucide="shield-check"></i><b>Статус системы</b><span class="status-ok">Все сервисы работают</span></div>
+    <div class="status-item"><i data-lucide="archive"></i><b>Конвертов всего</b><span>{{ dashboard.total_envelopes }}</span></div>
+    <div class="status-item"><i data-lucide="file-text"></i><b>Документов всего</b><span>{{ dashboard.documents_total }}</span></div>
+    <div class="status-item"><i data-lucide="users"></i><b>Пользователей</b><span>{{ dashboard.total_operators }}</span></div>
+    <div class="status-item"><i data-lucide="clock-3"></i><b>Время сервера</b><span id="server-time"
+      data-server-iso="{{ dashboard.server_time.isoformat() }}">{{ dashboard.server_time.strftime('%H:%M:%S %d.%m.%Y') }}</span></div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
