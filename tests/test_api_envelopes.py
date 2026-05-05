@@ -83,6 +83,37 @@ async def test_get_envelope_by_barcode_404(client):
 
 
 @pytest.mark.asyncio
+async def test_recent_envelopes_returns_current_operator_activity(client, stub_one_c):
+    client.cookies.set("operator_name", "Ivan")
+    env1 = (await client.post("/api/envelopes", json={})).json()
+    doc = (await client.post(
+        f"/api/envelopes/{env1['id']}/documents",
+        json={"barcode": _bc("11111111-1111-1111-1111-111111111111")},
+    )).json()
+    env2 = (await client.post("/api/envelopes", json={})).json()
+
+    client.cookies.set("operator_name", "Olga")
+    await client.post("/api/envelopes", json={})
+
+    client.cookies.set("operator_name", "Ivan")
+    b1, b2, s1, s2 = await _make_dictionary_via_api(client)
+    await client.post(f"/api/envelopes/{env1['id']}/seal", json={
+        "signer_sender_id": s1["id"], "signer_receiver_id": s2["id"],
+        "origin_branch_id": b1["id"], "destination_branch_id": b2["id"],
+        "notes": None,
+    })
+    await client.post(f"/api/envelopes/{env1['id']}/verify/start", json={})
+    await client.post(f"/api/envelopes/{env1['id']}/verify/scan", json={"barcode": doc["doc_barcode"]})
+    await client.post(f"/api/envelopes/{env1['id']}/verify/finish", json={"force": False})
+
+    r = await client.get("/api/envelopes/recent")
+    assert r.status_code == 200
+    items = r.json()
+    assert [item["id"] for item in items] == [env2["id"]]
+    assert all(item["created_by"] == "Ivan" for item in items)
+
+
+@pytest.mark.asyncio
 async def test_post_document_adds_doc(client, stub_one_c):
     client.cookies.set("operator_name", "Ivan")
     env = (await client.post("/api/envelopes", json={})).json()

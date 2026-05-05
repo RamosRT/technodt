@@ -58,6 +58,15 @@ async def list_envelopes(
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
+@router.get("/recent", response_model=list[EnvelopeOut])
+async def recent_envelopes(
+    limit: int = Query(default=5, ge=1, le=5),
+    operator: str = require_operator(),
+    session: AsyncSession = Depends(get_session),
+):
+    return await svc.list_recent_for_operator(session, operator=operator, limit=limit)
+
+
 @router.get("/by-barcode/{barcode}", response_model=EnvelopeOut)
 async def get_envelope_by_barcode(barcode: str, session: AsyncSession = Depends(get_session)):
     return await svc.get_by_barcode(session, barcode)

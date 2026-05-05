@@ -5,21 +5,26 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,12 +33,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -55,7 +60,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +78,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,23 +89,34 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import org.json.JSONObject
 import retrofit2.HttpException
 import ru.technoavia.konverttrack.data.api.ApiClient
 import ru.technoavia.konverttrack.data.api.DocumentAddRequest
+import ru.technoavia.konverttrack.data.api.DocumentDto
 import ru.technoavia.konverttrack.data.api.EnvelopeDto
 import ru.technoavia.konverttrack.data.api.LoginRequest
 import ru.technoavia.konverttrack.data.api.PrinterDto
@@ -127,7 +143,6 @@ import ru.technoavia.konverttrack.ui.theme.WarningBg
 import ru.technoavia.konverttrack.ui.theme.WarningOrange
 import ru.technoavia.konverttrack.ui.theme.KonvertTrackTheme
 import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
 class MainActivity : ComponentActivity() {
     private var openServiceMenu: (() -> Unit)? = null
@@ -172,19 +187,19 @@ class MainActivity : ComponentActivity() {
                 AppRoot(
                     savedServerUrl = prefs.getString("server_url", "") ?: "",
                     onSaveLogin = { serverUrl, operator, assignedPrinterId ->
-                        val edit = prefs.edit()
-                            .putString("server_url", serverUrl)
-                            .putString("operator", operator)
-                        if (!assignedPrinterId.isNullOrBlank()) {
-                            edit.putString("printer_id", assignedPrinterId)
+                        prefs.edit {
+                            putString("server_url", serverUrl)
+                            putString("operator", operator)
+                            if (!assignedPrinterId.isNullOrBlank()) {
+                                putString("printer_id", assignedPrinterId)
+                            }
                         }
-                        edit.apply()
                     },
                     onClearLogin = {
-                        prefs.edit().remove("operator").apply()
+                        prefs.edit { remove("operator") }
                     },
                     loadPreference = { key -> prefs.getString(key, "") ?: "" },
-                    savePreference = { key, value -> prefs.edit().putString(key, value).apply() },
+                    savePreference = { key, value -> prefs.edit { putString(key, value) } },
                     bindServiceMenu = { callback -> openServiceMenu = callback },
                     bindBarcode = { callback -> handleBarcode = callback },
                     bindSealEnvelope = { callback -> sealEnvelope = callback },
@@ -226,7 +241,7 @@ class MainActivity : ComponentActivity() {
         val bundle = extras ?: return null
         return bundle.keySet()
             .asSequence()
-            .mapNotNull { key -> bundle.get(key) as? String }
+            .mapNotNull { key -> bundle.getString(key) }
             .firstOrNull { it.isNotBlank() }
             ?.trim()
     }
@@ -295,6 +310,8 @@ private fun AppRoot(
     var registerError by remember { mutableStateOf<String?>(null) }
     var verifyMessage by remember { mutableStateOf<String?>(null) }
     var verifyError by remember { mutableStateOf<String?>(null) }
+    var isRegisteringScan by remember { mutableStateOf(false) }
+    var isVerifyingEnvelope by remember { mutableStateOf(false) }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
     var showRegisterExitConfirm by rememberSaveable { mutableStateOf(false) }
     var showVerifyForceFinishConfirm by rememberSaveable { mutableStateOf(false) }
@@ -347,65 +364,70 @@ private fun AppRoot(
                         scope.launch {
                             registerMessage = null
                             registerError = null
-                            val api = ApiClient.envelopeApi(currentServerUrl)
+                            isRegisteringScan = true
+                            try {
+                                val api = ApiClient.envelopeApi(currentServerUrl)
 
-                            val envelopeCandidates = listOf(raw, barcode)
-                                .map { it.trim() }
-                                .filter { it.isNotBlank() }
-                                .distinct()
-                            var scannedEnvelope: EnvelopeDto? = null
-                            for (candidate in envelopeCandidates) {
-                                val found = runCatching {
-                                    api.getByBarcode(candidate)
-                                }.getOrNull()
-                                if (found != null) {
-                                    scannedEnvelope = found
-                                    break
+                                val envelopeCandidates = listOf(raw, barcode)
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                var scannedEnvelope: EnvelopeDto? = null
+                                for (candidate in envelopeCandidates) {
+                                    val found = runCatching {
+                                        api.getByBarcode(candidate)
+                                    }.getOrNull()
+                                    if (found != null) {
+                                        scannedEnvelope = found
+                                        break
+                                    }
                                 }
-                            }
 
-                            if (scannedEnvelope != null) {
-                                when (scannedEnvelope.status) {
-                                    "draft" -> {
-                                        if (scannedEnvelope.id != envelopeId) {
-                                            currentEnvelope = scannedEnvelope
-                                            registerMessage = "Открыт черновик: ${scannedEnvelope.number}"
-                                        } else {
-                                            registerMessage = "Текущий черновик уже открыт"
+                                if (scannedEnvelope != null) {
+                                    when (scannedEnvelope.status) {
+                                        "draft" -> {
+                                            if (scannedEnvelope.id != envelopeId) {
+                                                currentEnvelope = scannedEnvelope
+                                                registerMessage = "Открыт черновик: ${scannedEnvelope.number}"
+                                            } else {
+                                                registerMessage = "Текущий черновик уже открыт"
+                                            }
+                                            playScanSound(context, success = true)
+                                            return@launch
                                         }
-                                        playScanSound(context, success = true)
-                                        return@launch
-                                    }
-                                    "sealed" -> {
-                                        registerError = "Конверт уже запечатан, дозаполнение невозможно"
-                                        playScanSound(context, success = false)
-                                        return@launch
-                                    }
-                                    else -> {
-                                        registerError = "Конверт в статусе ${scannedEnvelope.status}, дозаполнение недоступно"
-                                        playScanSound(context, success = false)
-                                        return@launch
+                                        "sealed" -> {
+                                            registerError = "Конверт уже запечатан, дозаполнение невозможно"
+                                            playScanSound(context, success = false)
+                                            return@launch
+                                        }
+                                        else -> {
+                                            registerError = "Конверт в статусе ${scannedEnvelope.status}, дозаполнение недоступно"
+                                            playScanSound(context, success = false)
+                                            return@launch
+                                        }
                                     }
                                 }
-                            }
 
-                            if (barcode.isBlank()) {
-                                registerError = "ШК не содержит цифр"
-                                playScanSound(context, success = false)
-                                return@launch
-                            }
-                            runCatching {
-                                api.addDocument(envelopeId, DocumentAddRequest(barcode))
-                            }.onSuccess { doc ->
-                                val envelope = currentEnvelope
-                                if (envelope != null && envelope.documents.none { it.id == doc.id }) {
-                                    currentEnvelope = envelope.copy(documents = envelope.documents + doc)
+                                if (barcode.isBlank()) {
+                                    registerError = "ШК не содержит цифр"
+                                    playScanSound(context, success = false)
+                                    return@launch
                                 }
-                                registerMessage = "Документ добавлен: ${doc.doc_number}"
-                                playScanSound(context, success = true)
-                            }.onFailure { error ->
-                                registerError = apiErrorText(error)
-                                playScanSound(context, success = false)
+                                runCatching {
+                                    api.addDocument(envelopeId, DocumentAddRequest(barcode))
+                                }.onSuccess { doc ->
+                                    val envelope = currentEnvelope
+                                    if (envelope != null && envelope.documents.none { it.id == doc.id }) {
+                                        currentEnvelope = envelope.copy(documents = envelope.documents + doc)
+                                    }
+                                    registerMessage = "Документ добавлен: ${doc.doc_number}"
+                                    playScanSound(context, success = true)
+                                }.onFailure { error ->
+                                    registerError = apiErrorText(error)
+                                    playScanSound(context, success = false)
+                                }
+                            } finally {
+                                isRegisteringScan = false
                             }
                         }
                     }
@@ -419,17 +441,22 @@ private fun AppRoot(
                             verifyError = "ШК конверта не распознан"
                             return@launch
                         }
-                        runCatching {
-                            val api = ApiClient.envelopeApi(currentServerUrl)
-                            val envelope = api.getByBarcode(barcode)
-                            val started = api.verifyStart(envelope.id)
-                            started
-                        }.onSuccess { started ->
-                            verifyEnvelope = started
-                            verifyMessage = "Конверт найден: ${started.number}"
-                            screen = "verify"
-                        }.onFailure { err ->
-                            verifyError = apiErrorText(err)
+                        isVerifyingEnvelope = true
+                        try {
+                            runCatching {
+                                val api = ApiClient.envelopeApi(currentServerUrl)
+                                val envelope = api.getByBarcode(barcode)
+                                val started = api.verifyStart(envelope.id)
+                                started
+                            }.onSuccess { started ->
+                                verifyEnvelope = started
+                                verifyMessage = "Конверт найден: ${started.number}"
+                                screen = "verify"
+                            }.onFailure { err ->
+                                verifyError = apiErrorText(err)
+                            }
+                        } finally {
+                            isVerifyingEnvelope = false
                         }
                     }
                 }
@@ -444,30 +471,35 @@ private fun AppRoot(
                                 verifyError = "ШК документа не распознан"
                                 return@launch
                             }
-                            runCatching {
-                                val api = ApiClient.envelopeApi(currentServerUrl)
-                                val scan = api.verifyScan(envelopeId, VerifyScanRequest(barcode))
-                                val fresh = api.getByBarcode(verifyEnvelope?.barcode.orEmpty())
-                                scan to fresh
-                            }.onSuccess { (scan, fresh) ->
-                                verifyEnvelope = fresh
-                                when {
-                                    !scan.matched -> {
-                                        verifyError = "Документ не найден в составе этого конверта"
-                                        playScanSound(context, success = false)
+                            isVerifyingEnvelope = true
+                            try {
+                                runCatching {
+                                    val api = ApiClient.envelopeApi(currentServerUrl)
+                                    val scan = api.verifyScan(envelopeId, VerifyScanRequest(barcode))
+                                    val fresh = api.getByBarcode(verifyEnvelope?.barcode.orEmpty())
+                                    scan to fresh
+                                }.onSuccess { (scan, fresh) ->
+                                    verifyEnvelope = fresh
+                                    when {
+                                        !scan.matched -> {
+                                            verifyError = "Документ не найден в составе этого конверта"
+                                            playScanSound(context, success = false)
+                                        }
+                                        scan.reason == "already_scanned" -> {
+                                            verifyMessage = "Документ уже был отсканирован ранее"
+                                            playScanSound(context, success = false)
+                                        }
+                                        else -> {
+                                            verifyMessage = "Документ отсканирован"
+                                            playScanSound(context, success = true)
+                                        }
                                     }
-                                    scan.reason == "already_scanned" -> {
-                                        verifyMessage = "Документ уже был отсканирован ранее"
-                                        playScanSound(context, success = false)
-                                    }
-                                    else -> {
-                                        verifyMessage = "Документ отсканирован"
-                                        playScanSound(context, success = true)
-                                    }
+                                }.onFailure { err ->
+                                    verifyError = apiErrorText(err)
+                                    playScanSound(context, success = false)
                                 }
-                            }.onFailure { err ->
-                                verifyError = apiErrorText(err)
-                                playScanSound(context, success = false)
+                            } finally {
+                                isVerifyingEnvelope = false
                             }
                         }
                     }
@@ -572,14 +604,19 @@ private fun AppRoot(
                             showVerifyForceFinishConfirm = false
                             verifyMessage = null
                             verifyError = null
-                            runCatching {
-                                ApiClient.envelopeApi(currentServerUrl).verifyFinish(envelopeId, VerifyFinishRequest(force = true))
-                            }.onSuccess {
-                                verifyMessage = "Сверка завершена с расхождением"
-                                verifyEnvelope = null
-                                screen = "home"
-                            }.onFailure { err ->
-                                verifyError = apiErrorText(err)
+                            isVerifyingEnvelope = true
+                            try {
+                                runCatching {
+                                    ApiClient.envelopeApi(currentServerUrl).verifyFinish(envelopeId, VerifyFinishRequest(force = true))
+                                }.onSuccess {
+                                    verifyMessage = "Сверка завершена с расхождением"
+                                    verifyEnvelope = null
+                                    screen = "home"
+                                }.onFailure { err ->
+                                    verifyError = apiErrorText(err)
+                                }
+                            } finally {
+                                isVerifyingEnvelope = false
                             }
                         }
                     },
@@ -657,6 +694,8 @@ private fun AppRoot(
             isOnline = online,
             message = registerMessage,
             error = registerError,
+            branchName = branch,
+            signerName = signer,
             branchId = branchId,
             signerId = signerId,
             printerId = printerId,
@@ -690,6 +729,8 @@ private fun AppRoot(
             isOnline = online,
             message = verifyMessage,
             error = verifyError,
+            branchName = branch,
+            signerName = signer,
             onBack = {
                 verifyEnvelope = null
                 verifyMessage = null
@@ -701,18 +742,23 @@ private fun AppRoot(
                 scope.launch {
                     verifyMessage = null
                     verifyError = null
-                    runCatching {
-                        ApiClient.envelopeApi(currentServerUrl).verifyFinish(envelopeId, VerifyFinishRequest(force = false))
-                    }.onSuccess {
-                        verifyMessage = "Сверка завершена"
-                        verifyEnvelope = null
-                        screen = "home"
-                    }.onFailure { err ->
-                        if (err is HttpException && err.code() == 409) {
-                            showVerifyForceFinishConfirm = true
-                        } else {
-                            verifyError = apiErrorText(err)
+                    isVerifyingEnvelope = true
+                    try {
+                        runCatching {
+                            ApiClient.envelopeApi(currentServerUrl).verifyFinish(envelopeId, VerifyFinishRequest(force = false))
+                        }.onSuccess {
+                            verifyMessage = "Сверка завершена"
+                            verifyEnvelope = null
+                            screen = "home"
+                        }.onFailure { err ->
+                            if (err is HttpException && err.code() == 409) {
+                                showVerifyForceFinishConfirm = true
+                            } else {
+                                verifyError = apiErrorText(err)
+                            }
                         }
+                    } finally {
+                        isVerifyingEnvelope = false
                     }
                 }
             },
@@ -729,6 +775,18 @@ private fun AppRoot(
                 verifyError = null
                 screen = "verify_start"
             },
+            onOpenDraft = { envelope ->
+                registerMessage = "Открыт черновик: ${envelope.number}"
+                registerError = null
+                currentEnvelope = envelope
+                screen = "register"
+            },
+            onVerifyEnvelopeStarted = { envelope ->
+                verifyEnvelope = envelope
+                verifyMessage = "Конверт найден: ${envelope.number}"
+                verifyError = null
+                screen = "verify"
+            },
             onEnvelopeCreated = { envelope ->
                 registerMessage = null
                 registerError = null
@@ -736,6 +794,13 @@ private fun AppRoot(
                 screen = "register"
             },
         )
+    }
+
+    if (isRegisteringScan) {
+        BrandLoadingOverlay("Регистрируем документ...")
+    }
+    if (isVerifyingEnvelope) {
+        BrandLoadingOverlay("Верифицируем конверт...")
     }
 }
 
@@ -749,8 +814,9 @@ private fun LoginScreen(
     var serverUrl by rememberSaveable { mutableStateOf(savedServerUrl) }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var logoTapCount by rememberSaveable { mutableStateOf(0) }
+    var logoTapCount by rememberSaveable { mutableIntStateOf(0) }
     var showServerDialog by rememberSaveable { mutableStateOf(savedServerUrl.isBlank()) }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -803,125 +869,339 @@ private fun LoginScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.White,
+                    0.55f to Color(0xFFF8FBFF),
+                    1f to Color.White,
+                ),
+            ),
     ) {
+        LoginDecorations()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 22.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth(),
+            Spacer(modifier = Modifier.height(62.dp))
+            LoginLogoLockup(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(86.dp)
+                    .clickable {
+                        logoTapCount += 1
+                        if (logoTapCount >= 5) {
+                            logoTapCount = 0
+                            showServerDialog = true
+                        }
+                    },
+            )
+            Text(
+                "Учёт передачи документов · ТСД",
+                style = MaterialTheme.typography.bodyMedium,
+                color = FgMuted,
+            )
+            Spacer(modifier = Modifier.height(48.dp))
+            LoginInputCard(
+                icon = R.drawable.ic_user_round,
+                label = "Имя оператора",
+                value = username,
+                onValueChange = {
+                    username = it
+                    errorText = null
+                },
+                placeholder = "ivan.petrov",
+            )
+            Spacer(modifier = Modifier.height(22.dp))
+            LoginInputCard(
+                icon = R.drawable.ic_lock_keyhole,
+                label = "Пароль",
+                value = password,
+                onValueChange = {
+                    password = it.filter(Char::isDigit).take(4)
+                    errorText = null
+                },
+                placeholder = "••••",
+                keyboardType = KeyboardType.NumberPassword,
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = R.drawable.ic_eye,
+                onTrailingClick = { passwordVisible = !passwordVisible },
+            )
+            if (errorText != null) {
+                Spacer(modifier = Modifier.height(18.dp))
+                ScanFeedbackBanner(errorText, isError = true)
+            } else {
+                Spacer(modifier = Modifier.height(30.dp))
+            }
+            Button(
+                onClick = { submitLogin() },
+                enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.length == 4,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(62.dp)
+                    .shadow(12.dp, RoundedCornerShape(10.dp), spotColor = BrandBlue.copy(alpha = 0.22f))
+                    .clip(RoundedCornerShape(10.dp)),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    disabledContainerColor = Color(0xFFB8C7DC),
+                ),
+                contentPadding = PaddingValues(0.dp),
             ) {
-                Spacer(modifier = Modifier.height(32.dp))
-                Image(
-                    painter = painterResource(R.drawable.logo_lockup),
-                    contentDescription = "ТехноКонверт",
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(84.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
-                            logoTapCount += 1
-                            if (logoTapCount >= 5) {
-                                logoTapCount = 0
-                                showServerDialog = true
-                            }
-                        },
-                    contentScale = ContentScale.Fit,
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "Учёт передачи документов · ТСД",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = FgMuted,
-                )
-                Spacer(modifier = Modifier.height(28.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                0f to Color(0xFF0063C7),
+                                1f to Color(0xFF4094F7),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Имя оператора".uppercase(), style = MaterialTheme.typography.labelSmall, color = FgLabel, letterSpacing = 0.5.sp)
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = {
-                                username = it
-                                errorText = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("ivan.petrov") },
-                            shape = RoundedCornerShape(8.dp),
-                        )
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("PIN-код".uppercase(), style = MaterialTheme.typography.labelSmall, color = FgLabel, letterSpacing = 0.5.sp)
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                password = it.filter(Char::isDigit).take(4)
-                                errorText = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("••••") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            visualTransformation = PasswordVisualTransformation(),
-                            shape = RoundedCornerShape(8.dp),
-                        )
-                    }
-                    if (errorText != null) {
-                        ScanFeedbackBanner(errorText, isError = true)
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White)
-                        .border(1.dp, BorderSoft, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (serverUrl.isNotBlank()) SuccessGreen else BrandRed))
-                    Text(
-                        text = if (serverUrl.isNotBlank()) "Сервер: $serverUrl" else "Адрес сервера не задан",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = FgMuted,
-                    )
+                    Text("Войти", style = MaterialTheme.typography.titleLarge, color = Color.White)
                 }
             }
-            Column(
+            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.weight(1f))
+            StaticLogoBadge(modifier = Modifier.align(Alignment.End).offset(x = 22.dp, y = 16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+            Text("v1.2.0 · build 184", style = MaterialTheme.typography.labelSmall, color = FgMuted)
+            Spacer(modifier = Modifier.height(34.dp))
+        }
+        LoginDeviceIndicator(
+            text = "Устройство: ${Build.MODEL.ifBlank { "ТСД" }} · DataWedge",
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 66.dp),
+        )
+        if (isLoading) {
+            BrandLoadingOverlay("Вход в систему...")
+        }
+    }
+}
+
+@Composable
+private fun LoginLogoLockup(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Box(modifier = Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(0.82f),
+                colorFilter = ColorFilter.tint(BrandInk),
+            )
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            "ТехноКонверт",
+            style = TextStyle(
+                color = BrandInk,
+                fontSize = 32.sp,
+                lineHeight = 36.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun LoginDecorations() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(enabled = false, onClick = {}),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(138.dp)
+                .offset(x = (-118).dp, y = 70.dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(28.dp))
+                .background(BrandInk),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(118.dp)
+                .offset(x = 42.dp, y = 44.dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFFE4EEF9)),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .size(width = 168.dp, height = 236.dp)
+                .offset(x = (-70).dp, y = 54.dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(34.dp))
+                .background(
+                    Brush.linearGradient(
+                        0f to BrandInk,
+                        1f to Color(0xFF0C2347),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .size(width = 108.dp, height = 190.dp)
+                .offset(x = 86.dp, y = 70.dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(28.dp))
+                .background(
+                    Brush.linearGradient(
+                        0f to Color(0xFF4E9BF0).copy(alpha = 0.84f),
+                        1f to Color(0xFFE4F0FF).copy(alpha = 0.78f),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun LoginInputCard(
+    icon: Int,
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingIcon: Int? = null,
+    onTrailingClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .shadow(16.dp, RoundedCornerShape(10.dp), spotColor = BrandInk.copy(alpha = 0.12f))
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.96f))
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = BrandBlue,
+            modifier = Modifier.size(32.dp),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = FgMuted)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Button(
-                    onClick = { submitLogin() },
-                    enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.length == 4,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
-                ) {
-                    Text("Войти", style = MaterialTheme.typography.titleMedium)
-                }
-                Text("v1.2.0 · build 1", style = MaterialTheme.typography.labelSmall, color = FgLabel)
-                Spacer(modifier = Modifier.height(12.dp))
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = BrandInk,
+                    fontSize = 19.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                visualTransformation = visualTransformation,
+                decorationBox = { innerTextField ->
+                    if (value.isBlank()) {
+                        Text(
+                            placeholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = FgLabel,
+                        )
+                    }
+                    innerTextField()
+                },
+            )
+        }
+        if (trailingIcon != null && onTrailingClick != null) {
+            IconButton(onClick = onTrailingClick, modifier = Modifier.size(44.dp)) {
+                Icon(
+                    painter = painterResource(trailingIcon),
+                    contentDescription = "Показать пароль",
+                    tint = Color(0xFF425577),
+                    modifier = Modifier.size(28.dp),
+                )
             }
         }
     }
-    if (isLoading) {
-        BrandLoadingOverlay("Вход в систему...")
+}
+
+@Composable
+private fun LoginDeviceIndicator(text: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_smartphone),
+            contentDescription = null,
+            tint = FgLabel.copy(alpha = 0.72f),
+            modifier = Modifier.size(13.dp),
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = FgLabel.copy(alpha = 0.74f),
+        )
     }
-    } // Box
+}
+
+@Composable
+private fun StaticLogoBadge(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.size(114.dp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val radius = size.minDimension * 0.38f
+            val strokeW = size.minDimension * 0.07f
+            val colors = listOf(
+                BrandBlue,
+                Color(0xFFDCE9F7),
+                Color(0xFFE9F1FA),
+                BrandRed,
+                Color(0xFFDCE9F7),
+                BrandBlueLight,
+                Color(0xFFDCE9F7),
+                Color(0xFFE9F1FA),
+            )
+            for (i in 0..7) {
+                drawArc(
+                    color = colors[i],
+                    startAngle = -90f + i * 45f + 7f,
+                    sweepAngle = 28f,
+                    useCenter = false,
+                    topLeft = Offset(cx - radius, cy - radius),
+                    size = Size(radius * 2f, radius * 2f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                )
+            }
+        }
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(0.46f),
+            colorFilter = ColorFilter.tint(Color(0xFF155CA8)),
+        )
+    }
 }
 
 private fun loginErrorText(error: Throwable): String {
@@ -1003,7 +1283,8 @@ private fun parseLoginQr(raw: String): LoginQrPayload? {
     val uriCandidate = if (normalized.startsWith("ktlogin://", ignoreCase = true)) {
         runCatching {
             val query = normalized.substringAfter('?', "")
-            URLDecoder.decode(query, StandardCharsets.UTF_8).parseCandidateTokens()
+            @Suppress("DEPRECATION")
+            URLDecoder.decode(query, "UTF-8").parseCandidateTokens()
         }.getOrDefault(LoginCandidate())
     } else {
         LoginCandidate()
@@ -1087,16 +1368,79 @@ private fun TsdShell(
     isOnline: Boolean,
     onOpenService: () -> Unit,
     onOpenVerify: () -> Unit,
+    onOpenDraft: (EnvelopeDto) -> Unit,
+    onVerifyEnvelopeStarted: (EnvelopeDto) -> Unit,
     onEnvelopeCreated: (EnvelopeDto) -> Unit,
 ) {
     var isCreatingEnvelope by remember { mutableStateOf(false) }
+    var isLoadingRecent by remember { mutableStateOf(false) }
+    var isOpeningRecent by remember { mutableStateOf(false) }
+    var recent by remember { mutableStateOf<List<EnvelopeDto>>(emptyList()) }
     var createError by remember { mutableStateOf<String?>(null) }
+    var recentError by remember { mutableStateOf<String?>(null) }
+    var verifiedWarning by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun refreshRecent() {
+        scope.launch {
+            isLoadingRecent = true
+            recentError = null
+            runCatching {
+                ApiClient.envelopeApi(serverUrl).recentEnvelopes()
+            }.onSuccess { items ->
+                recent = items
+            }.onFailure { error ->
+                recentError = loginErrorText(error)
+            }
+            isLoadingRecent = false
+        }
+    }
+
+    fun openRecentEnvelope(envelope: EnvelopeDto) {
+        when (envelope.status) {
+            "draft" -> {
+                playScanSound(context, success = true)
+                onOpenDraft(envelope)
+            }
+            "sealed" -> {
+                scope.launch {
+                    isOpeningRecent = true
+                    recentError = null
+                    runCatching {
+                        ApiClient.envelopeApi(serverUrl).verifyStart(envelope.id)
+                    }.onSuccess { started ->
+                        playScanSound(context, success = true)
+                        onVerifyEnvelopeStarted(started)
+                    }.onFailure { error ->
+                        playScanSound(context, success = false)
+                        recentError = apiErrorText(error)
+                    }
+                    isOpeningRecent = false
+                }
+            }
+            "verified", "verified_with_discrepancy" -> {
+                playScanSound(context, success = false)
+                verifiedWarning = "Конверт ${envelope.number} уже верифицирован. Повторное открытие недоступно."
+            }
+            else -> {
+                playScanSound(context, success = false)
+                verifiedWarning = "Конверт ${envelope.number} в статусе ${envelope.status}"
+            }
+        }
+    }
+
+    LaunchedEffect(serverUrl, operator) {
+        if (serverUrl.isNotBlank() && operator.isNotBlank()) {
+            refreshRecent()
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             TopBar(operator = operator, onOpenService = onOpenService)
             Column(
@@ -1130,10 +1474,35 @@ private fun TsdShell(
                     Text(createError.orEmpty(), color = BrandRed, style = MaterialTheme.typography.labelSmall)
                 }
                 SectionLabel("Последние")
-                RecentEnvelopeStub()
+                RecentEnvelopesBlock(
+                    envelopes = recent,
+                    isLoading = isLoadingRecent,
+                    error = recentError,
+                    onEnvelopeClick = ::openRecentEnvelope,
+                )
             }
             ConnBanner(isOnline = isOnline)
         }
+        if (isOpeningRecent) {
+            BrandLoadingOverlay("Открываем конверт...")
+        }
+        }
+    }
+
+    if (verifiedWarning != null) {
+        AlertDialog(
+            onDismissRequest = { verifiedWarning = null },
+            title = { Text("Конверт закрыт") },
+            text = { Text(verifiedWarning.orEmpty()) },
+            confirmButton = {
+                Button(
+                    onClick = { verifiedWarning = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                ) {
+                    Text("Понятно")
+                }
+            },
+        )
     }
 }
 
@@ -1144,6 +1513,8 @@ private fun RegisterScreen(
     isOnline: Boolean,
     message: String?,
     error: String?,
+    branchName: String,
+    signerName: String,
     branchId: String,
     signerId: String,
     printerId: String,
@@ -1158,6 +1529,7 @@ private fun RegisterScreen(
     var printMessage by remember { mutableStateOf<String?>(null) }
     var printError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val canSeal = envelope.documents.isNotEmpty() && branchId.isNotBlank() && signerId.isNotBlank()
     val sealAction: () -> Unit = {
         if (!canSeal) {
@@ -1213,7 +1585,11 @@ private fun RegisterScreen(
                 title = if (sealed) "Регистрация" else "Новый конверт",
                 subtitle = if (sealed) "Конверт запечатан" else "Сканируйте документы",
             )
-            EnvelopeHero(envelope)
+            EnvelopeHero(
+                envelope = envelope,
+                branchName = branchName,
+                signerName = signerName,
+            )
             if (sealed) {
                 SealedEnvelopeScreen(
                     envelope = envelope,
@@ -1287,11 +1663,29 @@ private fun RegisterScreen(
                                 if (i > 0) {
                                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
                                 }
-                                DocRow(
+                                SwipeToDeleteDocRow(
                                     index = i + 1,
-                                    kind = doc.doc_kind,
-                                    number = doc.doc_number,
-                                    date = doc.doc_date.toDisplayDate(),
+                                    doc = doc,
+                                    onDelete = {
+                                        scope.launch {
+                                            sealMessage = null
+                                            sealError = null
+                                            runCatching {
+                                                ApiClient.envelopeApi(serverUrl).deleteDocument(envelope.id, doc.id)
+                                            }.onSuccess {
+                                                onEnvelopeChanged(
+                                                    envelope.copy(
+                                                        documents = envelope.documents.filterNot { it.id == doc.id },
+                                                    ),
+                                                )
+                                                sealMessage = "Документ удалён"
+                                                playScanSound(context, success = true)
+                                            }.onFailure { err ->
+                                                sealError = apiErrorText(err)
+                                                playScanSound(context, success = false)
+                                            }
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -1426,7 +1820,11 @@ private fun SealedEnvelopeScreen(
 }
 
 @Composable
-private fun EnvelopeHero(envelope: EnvelopeDto) {
+private fun EnvelopeHero(
+    envelope: EnvelopeDto,
+    branchName: String,
+    signerName: String,
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1451,7 +1849,11 @@ private fun EnvelopeHero(envelope: EnvelopeDto) {
                 color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.titleLarge,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
                 Column {
                     Text(
                         "${envelope.documents.size}",
@@ -1464,6 +1866,11 @@ private fun EnvelopeHero(envelope: EnvelopeDto) {
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+                EnvelopeHeaderDetails(
+                    branchName = branchName,
+                    signerName = signerName,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -1476,6 +1883,8 @@ private fun VerifyEnvelopeHero(
     scannedCount: Int,
     totalCount: Int,
     allScanned: Boolean,
+    branchName: String,
+    signerName: String,
 ) {
     Box(
         modifier = Modifier
@@ -1489,7 +1898,11 @@ private fun VerifyEnvelopeHero(
                 Spacer(modifier = Modifier.weight(1f))
             }
             Text(envelopeNumber, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
                 Column {
                     Text(
                         "$scannedCount/$totalCount",
@@ -1502,8 +1915,42 @@ private fun VerifyEnvelopeHero(
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+                EnvelopeHeaderDetails(
+                    branchName = branchName,
+                    signerName = signerName,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun EnvelopeHeaderDetails(
+    branchName: String,
+    signerName: String,
+    modifier: Modifier = Modifier,
+) {
+    val branchText = branchName.ifBlank { "Филиал не выбран" }
+    val signerText = signerName.ifBlank { "Подписант не выбран" }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            branchText,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.92f),
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            signerText,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.68f),
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2101,6 +2548,8 @@ private fun VerifyScreen(
     isOnline: Boolean,
     message: String?,
     error: String?,
+    branchName: String,
+    signerName: String,
     onBack: () -> Unit,
     onFinish: () -> Unit,
 ) {
@@ -2125,6 +2574,8 @@ private fun VerifyScreen(
                 scannedCount = scannedCount,
                 totalCount = totalCount,
                 allScanned = allScanned,
+                branchName = branchName,
+                signerName = signerName,
             )
             Column(
                 modifier = Modifier
@@ -2250,11 +2701,7 @@ private fun ActionTile(
                 contentAlignment = Alignment.Center,
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = if (altTint) SuccessGreen else BrandBlue,
-                        strokeWidth = 2.dp,
-                    )
+                    BrandLoader(modifier = Modifier.size(34.dp))
                 } else {
                     Icon(
                         painter = painterResource(icon),
@@ -2289,6 +2736,13 @@ private fun BrandLoader(modifier: Modifier = Modifier) {
             step = (step + 1) % 8
         }
     }
+    val infiniteTransition = rememberInfiniteTransition(label = "logo-pulse")
+    val logoPulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.035f,
+        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
+        label = "logo-scale",
+    )
     val inactive = Color(0xFFD9E8F6)
     val segColors = (0..7).map { i ->
         when {
@@ -2323,7 +2777,13 @@ private fun BrandLoader(modifier: Modifier = Modifier) {
         Image(
             painter = painterResource(R.drawable.ic_launcher_foreground),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize(0.41f),
+            modifier = Modifier
+                .fillMaxSize(0.41f)
+                .graphicsLayer {
+                    scaleX = logoPulse
+                    scaleY = logoPulse
+                    alpha = 1f - ((logoPulse - 1f) / 0.035f * 0.08f)
+                },
             colorFilter = ColorFilter.tint(Color(0xFF2C467E)),
         )
     }
@@ -2470,14 +2930,73 @@ private fun ScanTarget(label: String, hint: String, armed: Boolean = true) {
 }
 
 @Composable
+private fun SwipeToDeleteDocRow(
+    index: Int,
+    doc: DocumentDto,
+    onDelete: () -> Unit,
+) {
+    val maxRevealPx = with(LocalDensity.current) { 72.dp.toPx() }
+    var offsetX by remember(doc.id) { mutableFloatStateOf(0f) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .background(DangerBg)
+                .padding(end = 8.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = {
+                    offsetX = 0f
+                    onDelete()
+                },
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_trash_2),
+                    contentDescription = "Удалить",
+                    tint = BrandRed,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(doc.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            offsetX = if (offsetX < -maxRevealPx / 2f) -maxRevealPx else 0f
+                        },
+                        onDragCancel = {
+                            offsetX = 0f
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount).coerceIn(-maxRevealPx, 0f)
+                        },
+                    )
+                },
+        ) {
+            DocRow(
+                index = index,
+                kind = doc.doc_kind,
+                number = doc.doc_number,
+                date = doc.doc_date.toDisplayDate(),
+            )
+        }
+    }
+}
+
+@Composable
 private fun DocRow(
     index: Int,
     kind: String,
     number: String,
     date: String,
     scanned: Boolean? = null,
-    showRemove: Boolean = false,
-    onRemove: (() -> Unit)? = null,
 ) {
     val bg = when (scanned) {
         true -> SuccessBg
@@ -2543,17 +3062,6 @@ private fun DocRow(
                 tint = BorderSoft,
                 modifier = Modifier.size(18.dp),
             )
-            showRemove && onRemove != null -> IconButton(
-                onClick = onRemove,
-                modifier = Modifier.size(28.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_arrow_left),
-                    contentDescription = "Удалить",
-                    tint = BrandRed,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
         }
     }
 }
@@ -2601,13 +3109,40 @@ private fun BottomBar(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun RecentEnvelopeStub() {
+private fun RecentEnvelopesBlock(
+    envelopes: List<EnvelopeDto>,
+    isLoading: Boolean,
+    error: String?,
+    onEnvelopeClick: (EnvelopeDto) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
-            .background(Color.White)
+            .background(Color.White),
+    ) {
+        when {
+            isLoading && envelopes.isEmpty() -> RecentEmptyState("Загружаем последние конверты...")
+            error != null && envelopes.isEmpty() -> RecentEmptyState(error)
+            envelopes.isEmpty() -> RecentEmptyState("Конвертов пока нет", "Конверты появятся после регистрации")
+            else -> {
+                envelopes.forEachIndexed { index, envelope ->
+                    if (index > 0) {
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
+                    }
+                    RecentEnvelopeRow(envelope = envelope, onClick = { onEnvelopeClick(envelope) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentEmptyState(title: String, subtitle: String? = null) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
             .padding(40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2626,9 +3161,92 @@ private fun RecentEnvelopeStub() {
                 modifier = Modifier.size(26.dp),
             )
         }
-        Text("Конвертов пока нет", style = MaterialTheme.typography.titleMedium, color = BrandInk)
-        Text("Конверты появятся после подключения", style = MaterialTheme.typography.labelSmall, color = FgMuted)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = BrandInk)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+        }
     }
+}
+
+@Composable
+private fun RecentEnvelopeRow(envelope: EnvelopeDto, onClick: () -> Unit) {
+    val (accent, bg, label) = recentStatusStyle(envelope.status)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(bg),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_package_plus),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(envelope.number, style = MaterialTheme.typography.bodyMedium, color = BrandInk, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(bg)
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, color = accent)
+                }
+                Text(recentEnvelopeMeta(envelope), style = MaterialTheme.typography.labelSmall, color = FgMuted)
+            }
+        }
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_right),
+            contentDescription = null,
+            tint = FgLabel,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+private fun recentStatusStyle(status: String): Triple<Color, Color, String> {
+    return when (status) {
+        "draft" -> Triple(SuccessGreen, SuccessBg, "ЧЕРНОВИК")
+        "sealed" -> Triple(WarningOrange, WarningBg, "ЗАПЕЧАТАН")
+        "verified" -> Triple(SuccessGreen, SuccessBg, "СВЕРЕН")
+        "verified_with_discrepancy" -> Triple(BrandRed, DangerBg, "С РАСХОЖДЕНИЕМ")
+        else -> Triple(FgMuted, SurfaceAlt, status.uppercase())
+    }
+}
+
+private fun recentEnvelopeMeta(envelope: EnvelopeDto): String {
+    val count = envelope.documents.size
+    val docText = "$count док."
+    val timeText = runCatching {
+        val parsed = java.time.OffsetDateTime.parse(envelope.created_at)
+        val local = parsed.toLocalDateTime()
+        val today = java.time.LocalDate.now()
+        val day = when (local.toLocalDate()) {
+            today -> "сегодня"
+            today.minusDays(1) -> "вчера"
+            else -> local.toLocalDate().toString()
+        }
+        "$day ${local.toLocalTime().toString().take(5)}"
+    }.getOrElse {
+        envelope.created_at.substringBefore(".").replace("T", " ").takeLast(16)
+    }
+    if (envelope.status == "verified_with_discrepancy") {
+        val missing = envelope.documents.count { it.scanned_at_verification == null }
+        return "$docText · $missing не найден"
+    }
+    return "$docText · $timeText"
 }
 
 @Preview(widthDp = 360, heightDp = 720)
@@ -2641,6 +3259,8 @@ private fun TsdShellPreview() {
             isOnline = true,
             onOpenService = {},
             onOpenVerify = {},
+            onOpenDraft = {},
+            onVerifyEnvelopeStarted = {},
             onEnvelopeCreated = {},
         )
     }

@@ -139,6 +139,32 @@ async def list_envelopes(
     return items, total
 
 
+async def list_recent_for_operator(
+    session: AsyncSession,
+    *,
+    operator: str,
+    limit: int = 5,
+) -> list[Envelope]:
+    activity = (
+        select(
+            AuditLog.envelope_id.label("envelope_id"),
+            func.max(AuditLog.at).label("last_activity_at"),
+        )
+        .where(AuditLog.actor == operator, AuditLog.envelope_id.is_not(None))
+        .group_by(AuditLog.envelope_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(Envelope)
+        .join(activity, Envelope.id == activity.c.envelope_id)
+        .where(Envelope.status.in_([EnvelopeStatus.draft, EnvelopeStatus.sealed]))
+        .options(selectinload(Envelope.documents))
+        .order_by(activity.c.last_activity_at.desc(), Envelope.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 # ---------------------------------------------------------------------------
 # Task 15: create_envelope
 # ---------------------------------------------------------------------------

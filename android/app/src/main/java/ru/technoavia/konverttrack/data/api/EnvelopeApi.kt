@@ -1,9 +1,11 @@
 package ru.technoavia.konverttrack.data.api
 
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 data class DocumentAddRequest(val barcode: String)
 
@@ -54,6 +56,9 @@ interface EnvelopeApi {
     @POST("api/envelopes")
     suspend fun createEnvelope(): EnvelopeDto
 
+    @GET("api/envelopes/recent")
+    suspend fun recentEnvelopes(@Query("limit") limit: Int = 5): List<EnvelopeDto>
+
     @GET("api/envelopes/by-barcode/{barcode}")
     suspend fun getByBarcode(@Path("barcode") barcode: String): EnvelopeDto
 
@@ -62,6 +67,12 @@ interface EnvelopeApi {
         @Path("envelopeId") envelopeId: String,
         @Body request: DocumentAddRequest,
     ): DocumentDto
+
+    @DELETE("api/envelopes/{envelopeId}/documents/{documentId}")
+    suspend fun deleteDocument(
+        @Path("envelopeId") envelopeId: String,
+        @Path("documentId") documentId: String,
+    ): retrofit2.Response<Unit>
 
     @POST("api/envelopes/{envelopeId}/seal")
     suspend fun sealEnvelope(
