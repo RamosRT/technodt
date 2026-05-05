@@ -61,7 +61,7 @@
   </div>
 
   {% if env_status == 'draft' %}
-  <div class="mt-16 flex gap-8">
+  <div class="mt-16 mb-12 flex gap-8">
     <button class="btn btn-primary"
             onclick="document.getElementById('seal-modal').removeAttribute('hidden')"
             {% if not documents %}disabled title="Нет документов"{% endif %}>
