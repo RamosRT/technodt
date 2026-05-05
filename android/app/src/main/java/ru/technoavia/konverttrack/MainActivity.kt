@@ -45,8 +45,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -62,15 +66,21 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -264,6 +274,11 @@ private fun AppRoot(
     bindBarcode: (((String) -> Unit)?) -> Unit,
     bindSealEnvelope: ((() -> Unit)?) -> Unit,
 ) {
+    var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(1800L)
+        showSplash = false
+    }
     var operator by rememberSaveable { mutableStateOf<String?>(null) }
     var online by rememberSaveable { mutableStateOf(false) }
     var screen by rememberSaveable { mutableStateOf("home") }
@@ -580,6 +595,11 @@ private fun AppRoot(
         )
     }
 
+    if (showSplash) {
+        SplashScreen()
+        return
+    }
+
     if (operator == null) {
         LoginScreen(
             savedServerUrl = savedServerUrl,
@@ -783,6 +803,7 @@ private fun LoginScreen(
         )
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -890,17 +911,17 @@ private fun LoginScreen(
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                 ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Text("Войти", style = MaterialTheme.typography.titleMedium)
-                    }
+                    Text("Войти", style = MaterialTheme.typography.titleMedium)
                 }
                 Text("v1.2.0 · build 1", style = MaterialTheme.typography.labelSmall, color = FgLabel)
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
+    if (isLoading) {
+        BrandLoadingOverlay("Вход в систему...")
+    }
+    } // Box
 }
 
 private fun loginErrorText(error: Throwable): String {
@@ -1181,6 +1202,7 @@ private fun RegisterScreen(
     }
 
     val sealed = envelope.status == "sealed"
+    Box(modifier = Modifier.fillMaxSize()) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -1299,16 +1321,16 @@ private fun RegisterScreen(
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                     ) {
-                        if (isSealing) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Text("Запечатать", style = MaterialTheme.typography.titleMedium)
-                        }
+                        Text("Запечатать", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
         }
     }
+    if (isSealing) {
+        BrandLoadingOverlay("Запечатываем конверт...")
+    }
+    } // Box
 }
 
 @Composable
@@ -1551,6 +1573,7 @@ private fun TopBar(operator: String, onOpenService: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ServiceScreen(
     operator: String,
@@ -1578,6 +1601,12 @@ private fun ServiceScreen(
     var printers by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
     var listError by remember { mutableStateOf<String?>(null) }
     var listsLoading by remember { mutableStateOf(false) }
+    var showBranchSheet by remember { mutableStateOf(false) }
+    var showSignerSheet by remember { mutableStateOf(false) }
+    var showPrinterSheet by remember { mutableStateOf(false) }
+    var showServerDialog by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
+    var tempServerUrl by remember { mutableStateOf(editableServerUrl) }
 
     LaunchedEffect(serverUrl) {
         listsLoading = true
@@ -1598,10 +1627,7 @@ private fun ServiceScreen(
         listsLoading = false
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize()) {
             ServiceTopBar(onBack = onBack)
             Column(
@@ -1612,91 +1638,78 @@ private fun ServiceScreen(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionLabel("Учётная запись")
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
-                            .background(Color.White),
-                    ) {
-                        ServiceInfoRow("Оператор", operator)
-                    }
+                ServiceSection("Учётная запись") {
+                    ServiceRow(
+                        icon = R.drawable.ic_circle_user,
+                        title = "Оператор",
+                        value = operator,
+                        showChevron = false,
+                    )
+                    ServiceDivider()
+                    ServiceRow(
+                        icon = R.drawable.ic_log_out,
+                        title = "Выйти",
+                        titleColor = BrandRed,
+                        onClick = { showLogoutConfirm = true },
+                    )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionLabel("Параметры отправки")
-                    ServiceCard {
-                        SettingsField(
-                            label = "Адрес сервера",
-                            value = editableServerUrl,
-                            onValueChange = { editableServerUrl = it },
-                            placeholder = "http://127.0.0.1:8080",
-                        )
-                        SettingsDropdown(
-                            label = "Филиал отправки",
-                            value = editableBranch,
-                            onValueChange = {
-                                editableBranchId = it.id
-                                editableBranch = it.label
-                            },
-                            options = branches,
-                            placeholder = "Не выбран",
-                        )
-                        SettingsDropdown(
-                            label = "Подписант",
-                            value = editableSigner,
-                            onValueChange = {
-                                editableSignerId = it.id
-                                editableSigner = it.label
-                            },
-                            options = signers,
-                            placeholder = "Не выбран",
-                        )
-                        SettingsDropdown(
-                            label = "ZPL-принтер",
-                            value = editablePrinter,
-                            onValueChange = {
-                                editablePrinterId = it.id
-                                editablePrinter = it.label
-                            },
-                            options = printers,
-                            placeholder = "Не выбран",
-                        )
-                        if (listsLoading) {
-                            Text("Загрузка...", style = MaterialTheme.typography.labelSmall, color = FgLabel)
-                        }
-                        if (listError != null) {
-                            Text(listError.orEmpty(), style = MaterialTheme.typography.labelSmall, color = BrandRed)
-                        }
-                    }
+                ServiceSection("Подключение") {
+                    ServiceRow(
+                        icon = R.drawable.ic_settings,
+                        title = "Адрес сервера",
+                        value = editableServerUrl.ifBlank { "Не задан" },
+                        onClick = {
+                            tempServerUrl = editableServerUrl
+                            showServerDialog = true
+                        },
+                    )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionLabel("Об устройстве")
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
-                            .background(Color.White),
-                    ) {
-                        ServiceInfoRow("ТСД", android.os.Build.MODEL ?: "Android")
-                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderLine))
-                        ServiceInfoRow("Версия", "v1.2.0 · build 1")
-                    }
+                ServiceSection("Предпочтения отправки") {
+                    ServiceRow(
+                        icon = R.drawable.ic_building_2,
+                        title = "Филиал отправки",
+                        value = editableBranch.ifBlank { "Не выбран" },
+                        onClick = { showBranchSheet = true },
+                    )
+                    ServiceDivider()
+                    ServiceRow(
+                        icon = R.drawable.ic_user_round,
+                        title = "Подписант",
+                        value = editableSigner.ifBlank { "Не выбран" },
+                        onClick = { showSignerSheet = true },
+                    )
+                }
+                ServiceSection("Печать") {
+                    ServiceRow(
+                        icon = R.drawable.ic_printer,
+                        title = "ZPL-принтер",
+                        value = editablePrinter.ifBlank { "Не выбран" },
+                        onClick = { showPrinterSheet = true },
+                    )
+                }
+                ServiceSection("Об устройстве") {
+                    ServiceRow(
+                        icon = R.drawable.ic_smartphone,
+                        title = "ТСД",
+                        value = android.os.Build.MODEL ?: "Android",
+                        showChevron = false,
+                    )
+                    ServiceDivider()
+                    ServiceRow(
+                        icon = R.drawable.ic_info,
+                        title = "Версия",
+                        value = "v1.2.0 · build 1",
+                        showChevron = false,
+                    )
+                }
+                if (listsLoading) {
+                    Text("Загрузка...", style = MaterialTheme.typography.labelSmall, color = FgLabel, modifier = Modifier.padding(horizontal = 4.dp))
+                }
+                if (listError != null) {
+                    Text(listError.orEmpty(), style = MaterialTheme.typography.labelSmall, color = BrandRed, modifier = Modifier.padding(horizontal = 4.dp))
                 }
             }
             BottomBar {
-                Button(
-                    onClick = onLogout,
-                    modifier = Modifier.height(56.dp).weight(0.4f),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerBg),
-                    elevation = ButtonDefaults.buttonElevation(0.dp),
-                    border = BorderStroke(1.dp, Color(0xFFF3C2C2)),
-                ) {
-                    Text("Выйти", style = MaterialTheme.typography.bodyMedium, color = BrandRed)
-                }
                 Button(
                     onClick = {
                         onSaveSettings(
@@ -1709,7 +1722,7 @@ private fun ServiceScreen(
                             editablePrinter.trim(),
                         )
                     },
-                    modifier = Modifier.weight(0.6f).height(56.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                 ) {
@@ -1719,74 +1732,89 @@ private fun ServiceScreen(
             ConnBanner(isOnline = isOnline)
         }
     }
-}
 
-@Composable
-private fun SettingsField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsDropdown(
-    label: String,
-    value: String,
-    onValueChange: (SelectOption) -> Unit,
-    options: List<SelectOption>,
-    placeholder: String,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            singleLine = true,
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+    if (showBranchSheet) {
+        SelectionSheet(
+            title = "Филиал отправки",
+            desc = "Подставится по умолчанию при создании конверта",
+            options = branches,
+            selectedId = editableBranchId,
+            onSelect = { selected ->
+                editableBranchId = selected.id
+                editableBranch = selected.label
+                showBranchSheet = false
+            },
+            onDismiss = { showBranchSheet = false },
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            if (options.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("Нет данных") },
-                    onClick = { expanded = false },
+    }
+    if (showSignerSheet) {
+        SelectionSheet(
+            title = "Подписант",
+            options = signers,
+            selectedId = editableSignerId,
+            onSelect = { selected ->
+                editableSignerId = selected.id
+                editableSigner = selected.label
+                showSignerSheet = false
+            },
+            onDismiss = { showSignerSheet = false },
+        )
+    }
+    if (showPrinterSheet) {
+        SelectionSheet(
+            title = "ZPL-принтер",
+            options = printers,
+            selectedId = editablePrinterId,
+            onSelect = { selected ->
+                editablePrinterId = selected.id
+                editablePrinter = selected.label
+                showPrinterSheet = false
+            },
+            onDismiss = { showPrinterSheet = false },
+        )
+    }
+    if (showServerDialog) {
+        AlertDialog(
+            onDismissRequest = { showServerDialog = false },
+            title = { Text("Адрес сервера") },
+            text = {
+                OutlinedTextField(
+                    value = tempServerUrl,
+                    onValueChange = { tempServerUrl = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("URL") },
+                    placeholder = { Text("http://127.0.0.1:8080") },
                 )
-            } else {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = {
-                            onValueChange(option)
-                            expanded = false
-                        },
-                    )
+            },
+            confirmButton = {
+                TextButton(onClick = { editableServerUrl = tempServerUrl.trim(); showServerDialog = false }) {
+                    Text("Сохранить")
                 }
-            }
-        }
+            },
+            dismissButton = {
+                TextButton(onClick = { showServerDialog = false }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            title = { Text("Выход из системы") },
+            text = { Text("Вы уверены, что хотите выйти из учётной записи?") },
+            confirmButton = {
+                TextButton(onClick = { showLogoutConfirm = false; onLogout() }) {
+                    Text("Выйти", color = BrandRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) {
+                    Text("Отмена")
+                }
+            },
+        )
     }
 }
 
@@ -1826,41 +1854,146 @@ private fun ServiceTopBar(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ServiceCard(content: @Composable () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun ServiceSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel(title)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, BorderSoft, RoundedCornerShape(10.dp))
+                .background(Color.White),
+        ) {
             content()
         }
     }
 }
 
 @Composable
-private fun ServiceRow(title: String, value: String) {
+private fun ServiceRow(
+    icon: Int,
+    title: String,
+    value: String = "",
+    titleColor: Color = BrandInk,
+    showChevron: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, color = BrandInk.copy(alpha = 0.72f))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = BrandInk)
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = FgLabel,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = titleColor,
+            )
+            if (value.isNotEmpty()) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = FgMuted,
+                )
+            }
+        }
+        if (showChevron && onClick != null) {
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                tint = FgLabel,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun ServiceInfoRow(title: String, value: String) {
-    Row(
+private fun ServiceDivider() {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, color = BrandInk)
-        Text(value, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+            .height(1.dp)
+            .padding(start = 50.dp)
+            .background(BorderLine),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionSheet(
+    title: String,
+    desc: String = "",
+    options: List<SelectOption>,
+    selectedId: String,
+    onSelect: (SelectOption) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp),
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = BrandInk)
+                if (desc.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(desc, style = MaterialTheme.typography.labelSmall, color = FgMuted)
+                }
+            }
+            HorizontalDivider(color = BorderLine)
+            if (options.isEmpty()) {
+                Text(
+                    text = "Нет доступных вариантов",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = FgMuted,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                )
+            } else {
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clickable { onSelect(option) }
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = option.label,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = BrandInk,
+                        )
+                        if (option.id == selectedId) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_check),
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                    if (option != options.last()) {
+                        HorizontalDivider(
+                            color = BorderSoft,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2144,6 +2277,97 @@ private fun ActionTile(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BrandLoader(modifier: Modifier = Modifier) {
+    var step by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(450L)
+            step = (step + 1) % 8
+        }
+    }
+    val inactive = Color(0xFFD9E8F6)
+    val segColors = (0..7).map { i ->
+        when {
+            i == step % 8 -> Color(0xFF1D71B8)
+            i == (step + 3) % 8 -> Color(0xFFE4032E)
+            i == (step + 6) % 8 -> Color(0xFF1B2848)
+            else -> inactive
+        }
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val radius = size.minDimension * 0.36f
+            val strokeW = size.minDimension * 0.055f
+            val arcSweep = 26f
+            val sectorSize = 45f
+            val gapHalf = (sectorSize - arcSweep) / 2f
+            for (i in 0..7) {
+                val startAngle = -90f + i * sectorSize + gapHalf
+                drawArc(
+                    color = segColors[i],
+                    startAngle = startAngle,
+                    sweepAngle = arcSweep,
+                    useCenter = false,
+                    topLeft = Offset(cx - radius, cy - radius),
+                    size = Size(radius * 2f, radius * 2f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                )
+            }
+        }
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(0.41f),
+            colorFilter = ColorFilter.tint(Color(0xFF2C467E)),
+        )
+    }
+}
+
+@Composable
+private fun BrandLoadingOverlay(label: String? = null) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BrandInk.copy(alpha = 0.75f))
+            .clickable(enabled = false, onClick = {}),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            BrandLoader(modifier = Modifier.size(128.dp))
+            if (label != null) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SplashScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.app_splash),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+        )
     }
 }
 

@@ -76,7 +76,14 @@
       "PowerShell(Get-ItemProperty *)",
       "PowerShell(where.exe adb 2>&1; & \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" devices 2>&1)",
       "Bash(export JAVA_HOME=\"/e/AndroidStudio/jbr\")",
-      "Bash(./gradlew assembleDebug)"
+      "Bash(./gradlew assembleDebug)",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(ls \"C:\\\\Program Files\" | Where-Object {$_.Name -match \"Android|Java|JDK\"} | Select-Object Name; ls \"C:\\\\Program Files \\(x86\\)\" | Where-Object {$_.Name -match \"Android|Java|JDK\"} | Select-Object Name)",
+      "PowerShell($env:JAVA_HOME = \"E:\\\\AndroidStudio\\\\jbr\"; $env:ANDROID_HOME = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Android\\\\Sdk\"; $env:PATH = \"$env:JAVA_HOME\\\\bin;$env:PATH\"; Set-Location \"E:\\\\technodt\\\\android\"; .\\\\gradlew.bat assembleDebug --no-daemon 2>&1 | Select-Object -Last 20)",
+      "PowerShell($adb = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"E:\\\\technodt\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\debug\\\\app-debug.apk\")",
+      "PowerShell($adb = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb shell am start -n \"ru.technoavia.konverttrack/.MainActivity\")",
+      "PowerShell(New-Item *)"
     ]
   }
 }
