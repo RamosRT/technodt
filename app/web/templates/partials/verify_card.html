@@ -7,7 +7,7 @@ requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
 
 <div class="card">
   <div class="card-title">
-    <span>{{ envelope.number }}</span>
+    <span class="card-heading">{{ envelope.number }}</span>
     <span class="badge badge-sealed">Запечатан</span>
     <div class="ml-auto env-bc-compact">
       <svg id="env-bc-svg" aria-label="Envelope barcode"></svg>
@@ -19,24 +19,27 @@ requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
   {% endif %}
 
   <div class="env-meta">
-    <div class="env-meta-item"><label>Дата отправки</label><span>{{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') if envelope.sealed_at else '—' }}</span></div>
-    <div class="env-meta-item"><label>Оператор отправки</label><span>{{ envelope.created_by or '—' }}</span></div>
-    <div class="env-meta-item"><label>Место отправки</label><span>{{ origin_branch_name or '—' }}</span></div>
-    <div class="env-meta-item"><label>Подписанты</label><span>{{ signer_sender_name or '—' }} / {{ signer_receiver_name or '—' }}</span></div>
-    <div class="env-meta-item"><label>Документов</label><span>{{ documents|length }}</span></div>
-    <div class="env-meta-item"><label>Отсканировано</label><span>{{ scanned_count }}</span></div>
+    <div class="env-meta-item"><i data-lucide="calendar-days"></i><div><label>Дата отправки</label><span>{{ envelope.sealed_at.strftime('%d.%m.%Y %H:%M') if envelope.sealed_at else '—' }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="circle-user"></i><div><label>Оператор отправки</label><span>{{ envelope.created_by or '—' }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="map-pin"></i><div><label>Место отправки</label><span>{{ origin_branch_name or '—' }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="pen-line"></i><div><label>Подписанты</label><span>{{ signer_sender_name or '—' }} / {{ signer_receiver_name or '—' }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="file-text"></i><div><label>Документов</label><span>{{ documents|length }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="circle-check"></i><div><label>Отсканировано</label><span>{{ scanned_count }}</span></div></div>
   </div>
 
   <div class="print-actions">
-    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank">Опись (PDF)</a>
-    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Этикетка (PDF)</a>
-    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank">Этикетка (ZPL)</a>
+    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank"><i data-lucide="file-text"></i> Опись (PDF)</a>
+    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank"><i data-lucide="file-barcode"></i> Этикетка (PDF)</a>
+    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank"><i data-lucide="printer"></i> Этикетка (ZPL)</a>
   </div>
 
   <!-- Manual scan input -->
   <div class="flex gap-8" style="margin-bottom:16px">
-    <input id="verify-manual" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
-    <button class="btn btn-primary btn-sm" onclick="verifyManual()">Сканировать</button>
+    <div class="input-shell scanner-shell">
+      <i data-lucide="barcode"></i>
+      <input id="verify-manual" class="form-control" placeholder="ШК документа (или сканируйте)" autocomplete="off">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="verifyManual()"><i data-lucide="scan-barcode"></i> Сканировать</button>
   </div>
   <script>
   document.getElementById('verify-manual').addEventListener('keydown', e => {
@@ -57,7 +60,7 @@ requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
     <form hx-post="/ui/envelopes/{{ envelope.id }}/verify/finish"
           hx-target="#verify-card" hx-swap="outerHTML">
       <input type="hidden" name="force" value="false">
-      <button type="submit" class="btn btn-success">✓ Завершить</button>
+      <button type="submit" class="btn btn-success"><i data-lucide="circle-check"></i> Завершить</button>
     </form>
     {% else %}
     <span class="text-muted" style="align-self:center">
@@ -68,7 +71,7 @@ requestAnimationFrame(() => renderEnvelopeBarcode('{{ envelope.barcode }}'));
           hx-confirm="Не все документы отсканированы. Вы уверены что желаете завершить проверку?"
           style="margin-left:auto">
       <input type="hidden" name="force" value="true">
-      <button type="submit" class="btn btn-danger">Завершить с расхождением</button>
+      <button type="submit" class="btn btn-danger"><i data-lucide="triangle-alert"></i> Завершить с расхождением</button>
     </form>
     {% endif %}
   </div>

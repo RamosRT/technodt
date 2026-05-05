@@ -1,6 +1,9 @@
 <section class="list-page">
-  <div class="list-header">
-    <h2><i data-lucide="settings-2"></i> Администрирование</h2>
+  <div class="page-heading">
+    <div class="page-icon"><i data-lucide="settings-2"></i></div>
+    <div>
+      <h2>Администрирование</h2>
+    </div>
   </div>
 
   <div class="admin-v2-grid">
@@ -14,9 +17,9 @@
           <tbody>
             {% for op in operators %}
             <tr>
-              <td><strong>{{ op.username }}</strong></td>
-              <td>{% if op.is_admin %}<span class="admin-badge">Admin</span>{% else %}<span class="text-muted">Оператор</span>{% endif %}</td>
-              <td>{% if op.is_active %}<span class="ok-text">Да</span>{% else %}<span class="danger-text">Нет</span>{% endif %}</td>
+              <td><span class="operator-cell"><i data-lucide="user-round"></i><strong>{{ op.username }}</strong></span></td>
+              <td>{% if op.is_admin %}<span class="role-badge role-admin">Admin</span>{% else %}<span class="role-badge">Оператор</span>{% endif %}</td>
+              <td>{% if op.is_active %}<span class="state-badge state-on"><i data-lucide="circle"></i> Да</span>{% else %}<span class="state-badge state-off"><i data-lucide="circle"></i> Нет</span>{% endif %}</td>
               <td>
                 <form class="inline-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
                   <select class="form-control form-control-sm" name="assigned_zpl_printer_id">
@@ -25,7 +28,7 @@
                     <option value="{{ printer.id }}" {% if op.assigned_zpl_printer_id == printer.id %}selected{% endif %}>{{ printer.name }}</option>
                     {% endfor %}
                   </select>
-                  <button class="btn btn-ghost btn-sm" type="submit">Назначить</button>
+                  <button class="btn btn-ghost btn-sm" type="submit"><i data-lucide="check"></i></button>
                 </form>
               </td>
               <td>{{ op.created_at.strftime('%d.%m.%Y') }}</td>

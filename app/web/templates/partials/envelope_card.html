@@ -20,7 +20,7 @@
 
 <div class="card">
   <div class="card-title">
-    <span>{{ envelope.number }}</span>
+    <span class="card-heading">{{ envelope.number }}</span>
     <span class="badge badge-{{ env_status }}">{{ status_labels[env_status] }}</span>
     <div class="ml-auto env-bc-compact">
       {% if env_status == 'draft' %}
@@ -30,16 +30,19 @@
   </div>
 
   <div class="env-meta">
-    <div class="env-meta-item"><label>Оператор</label><span>{{ envelope.created_by }}</span></div>
-    <div class="env-meta-item"><label>Создан</label><span>{{ envelope.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div>
-    <div class="env-meta-item"><label>Документов</label><span>{{ documents|length }}</span></div>
+    <div class="env-meta-item"><i data-lucide="circle-user"></i><div><label>Оператор</label><span>{{ envelope.created_by }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="calendar-days"></i><div><label>Создан</label><span>{{ envelope.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div></div>
+    <div class="env-meta-item"><i data-lucide="file-text"></i><div><label>Документов</label><span>{{ documents|length }}</span></div></div>
   </div>
 
   {% if env_status == 'draft' %}
   <!-- manual barcode input for keyboard entry -->
   <div class="flex gap-8 mt-8" style="margin-bottom:16px">
-    <input id="manual-bc" class="form-control" placeholder="ШК документа или черновика конверта" autocomplete="off">
-    <button class="btn btn-primary" onclick="dispatchManual()">Добавить</button>
+    <div class="input-shell scanner-shell">
+      <i data-lucide="scan-line"></i>
+      <input id="manual-bc" class="form-control" placeholder="ШК документа или черновика конверта" autocomplete="off">
+    </div>
+    <button class="btn btn-primary" onclick="dispatchManual()"><i data-lucide="plus"></i> Добавить</button>
   </div>
   <script>
   document.getElementById('manual-bc').addEventListener('keydown', e => {
@@ -62,7 +65,7 @@
     <button class="btn btn-primary"
             onclick="document.getElementById('seal-modal').removeAttribute('hidden')"
             {% if not documents %}disabled title="Нет документов"{% endif %}>
-      Запечатать
+      <i data-lucide="lock-keyhole"></i> Запечатать
     </button>
     <span class="text-muted" style="align-self:center">Отсканируйте документы или ШК черновика конверта</span>
   </div>
@@ -70,9 +73,9 @@
 
   {% if env_status == 'sealed' %}
   <div class="print-actions">
-    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank">Опись (PDF)</a>
-    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank">Этикетка (PDF)</a>
-    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank">Этикетка (ZPL)</a>
+    <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank"><i data-lucide="file-text"></i> Опись (PDF)</a>
+    <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank"><i data-lucide="file-barcode"></i> Этикетка (PDF)</a>
+    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank"><i data-lucide="printer"></i> Этикетка (ZPL)</a>
   </div>
   {% endif %}
 

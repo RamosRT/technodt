@@ -9,7 +9,7 @@
 <script src="/static/app.js" defer></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer onload="lucide.createIcons()"></script>
 </head>
-<body hx-boost="false">
+<body class="{% if operator %}is-authenticated{% else %}is-login{% endif %}" hx-boost="false">
 
 <input id="scanner-input" type="text" autocomplete="off" tabindex="-1" aria-hidden="true">
 
@@ -65,6 +65,9 @@
       <i data-lucide="settings-2"></i>
     </button>
     {% endif %}
+    <button class="ta-icon-btn ta-notify-btn" type="button" title="Уведомления">
+      <i data-lucide="bell"></i>
+    </button>
     <button class="ta-icon-btn" type="button"
             hx-post="/ui/operator/clear" hx-target="body" hx-swap="outerHTML"
             title="Выйти">

@@ -1,6 +1,6 @@
 {# Shown when entering verify mode #}
 <div class="card">
-  <div class="card-title">Верификация конверта</div>
+  <div class="card-title"><i data-lucide="scan-line"></i> Верификация конверта</div>
   {% if error %}
   <div class="alert alert-error" style="margin-bottom:12px">{{ error }}</div>
   {% endif %}
@@ -8,9 +8,12 @@
     Отсканируйте штрихкод конверта или введите его вручную:
   </p>
   <div class="flex gap-8">
-    <input id="verify-bc-input" class="form-control" placeholder="Штрихкод конверта"
-           autocomplete="off" autofocus>
-    <button class="btn btn-primary" onclick="startVerifyManual()">Открыть</button>
+    <div class="input-shell scanner-shell">
+      <i data-lucide="scan-line"></i>
+      <input id="verify-bc-input" class="form-control" placeholder="Штрихкод конверта"
+             autocomplete="off" autofocus>
+    </div>
+    <button class="btn btn-primary" onclick="startVerifyManual()"><i data-lucide="arrow-right"></i> Открыть</button>
   </div>
   <script>
   document.getElementById('verify-bc-input').addEventListener('keydown', e => {

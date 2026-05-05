@@ -3,24 +3,37 @@
 
 {% if not operator %}
 <div class="operator-prompt">
+  <div class="login-brand">
+    <span class="login-logo-mark"><img src="/static/icon.png" alt=""></span>
+    <span>ТехноКонверт</span>
+  </div>
   <h2>Вход в систему</h2>
   <p>Введите логин и 4-значный код</p>
   <form hx-post="/ui/operator" hx-target="body" hx-swap="outerHTML">
     <div class="form-row">
       <label for="op-name">Логин</label>
-      <input class="form-control" id="op-name" name="operator_name" required autofocus>
+      <div class="input-shell">
+        <i data-lucide="circle-user"></i>
+        <input class="form-control" id="op-name" name="operator_name" placeholder="Введите логин" required autofocus>
+      </div>
     </div>
     <div class="form-row">
       <label for="op-password">Код</label>
-      <input class="form-control" id="op-password" name="password" required
-             inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password">
+      <div class="input-shell">
+        <i data-lucide="lock-keyhole"></i>
+        <input class="form-control" id="op-password" name="password" placeholder="••••" required
+               inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password">
+      </div>
     </div>
-    <button class="btn btn-primary" style="width:100%">Войти</button>
+    <button class="btn btn-primary btn-login">Войти</button>
   </form>
 </div>
 {% else %}
 <div class="welcome-panel">
-  <h2>Регистрация и проверка конвертов</h2>
+  <div class="welcome-copy">
+    <h2>Регистрация и проверка конвертов</h2>
+    <p>Создавайте конверты, проверяйте их подлинность и управляйте документами в едином защищенном контуре.</p>
+  </div>
   <div class="quick-actions">
     <button class="btn btn-primary" hx-post="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
             onclick="setMode('register')"><i data-lucide="package-plus"></i> Новый конверт</button>
@@ -34,6 +47,23 @@
     <button class="btn btn-ghost" hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
             onclick="setMode('idle')"><i data-lucide="file-text"></i> Документы</button>
     {% endif %}
+  </div>
+  <div class="dashboard-grid">
+    <section class="dashboard-card">
+      <i data-lucide="package-plus"></i>
+      <strong>Регистрация</strong>
+      <span>Сканирование документов и печать описи</span>
+    </section>
+    <section class="dashboard-card">
+      <i data-lucide="scan-line"></i>
+      <strong>Верификация</strong>
+      <span>Проверка состава конверта при получении</span>
+    </section>
+    <section class="dashboard-card">
+      <i data-lucide="book-open"></i>
+      <strong>Справочники</strong>
+      <span>Филиалы, подписанты и рабочие параметры</span>
+    </section>
   </div>
 </div>
 {% endif %}

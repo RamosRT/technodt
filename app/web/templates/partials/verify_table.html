@@ -18,9 +18,9 @@
       <td>{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
       <td>
         {% if doc.scanned_at_verification %}
-        <span class="scan-status-ok">✓ Получен</span>
+        <span class="scan-status-ok"><i data-lucide="circle-check"></i> Отсканирован</span>
         {% else %}
-        <span class="scan-status-pending">○ Ожидание</span>
+        <span class="scan-status-pending"><i data-lucide="clock-3"></i> Ожидание</span>
         {% endif %}
       </td>
     </tr>

@@ -1,8 +1,12 @@
 {# Dictionaries panel #}
 <div id="admin-panel">
 <div class="list-page dictionaries-page">
-  <div class="dict-header">
-    <h2><i data-lucide="book-open"></i> Справочники</h2>
+  <div class="page-heading">
+    <div class="page-icon"><i data-lucide="book-open"></i></div>
+    <div>
+      <h2>Справочники</h2>
+      <p>Управление справочниками филиалов и подписантов организации.</p>
+    </div>
     {% if not is_admin %}
     <span class="readonly-note"><i data-lucide="eye"></i> Режим просмотра</span>
     {% endif %}
@@ -11,7 +15,7 @@
 
   <!-- Branches -->
   <div class="card">
-    <div class="card-title">Филиалы</div>
+    <div class="card-title"><i data-lucide="building-2"></i> Филиалы</div>
     <ul class="admin-list" id="branch-list">
       {% for b in branches %}
       <li id="branch-{{ b.id }}">
@@ -22,13 +26,13 @@
                   data-id="{{ b.id }}"
                   data-name="{{ b.name }}"
                   onclick="editBranchFromBtn(this)">
-            Изм.
+            <i data-lucide="pencil"></i> Изм.
           </button>
           <button class="btn btn-sm btn-danger"
                   hx-post="/ui/admin/branches/{{ b.id }}/deactivate"
                   hx-confirm="Деактивировать филиал?"
                   hx-target="#admin-panel" hx-swap="outerHTML">
-            Удал.
+            <i data-lucide="trash-2"></i> Удал.
           </button>
         </div>
         {% endif %}
@@ -41,7 +45,7 @@
     <div style="margin-top:12px">
       <form hx-post="/ui/admin/branches" hx-target="#admin-panel" hx-swap="outerHTML" class="flex gap-8">
         <input name="name" class="form-control" placeholder="Название филиала" required>
-        <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
+        <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="plus"></i> Добавить</button>
       </form>
     </div>
     {% endif %}
@@ -49,7 +53,7 @@
 
   <!-- Signers -->
   <div class="card">
-    <div class="card-title">Подписанты</div>
+    <div class="card-title"><i data-lucide="user-round"></i> Подписанты</div>
     <ul class="admin-list" id="signer-list">
       {% for s in signers %}
       <li id="signer-{{ s.id }}">
@@ -61,13 +65,13 @@
                   data-last-name="{{ s.last_name }}"
                   data-first-name="{{ s.first_name }}"
                   onclick="editSignerFromBtn(this)">
-            Изм.
+            <i data-lucide="pencil"></i> Изм.
           </button>
           <button class="btn btn-sm btn-danger"
                   hx-post="/ui/admin/signers/{{ s.id }}/deactivate"
                   hx-confirm="Деактивировать подписанта?"
                   hx-target="#admin-panel" hx-swap="outerHTML">
-            Удал.
+            <i data-lucide="trash-2"></i> Удал.
           </button>
         </div>
         {% endif %}
@@ -83,7 +87,7 @@
           <input name="last_name"  class="form-control" placeholder="Фамилия" required>
           <input name="first_name" class="form-control" placeholder="Имя"     required>
         </div>
-        <button class="btn btn-primary btn-sm" type="submit">+ Добавить</button>
+        <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="plus"></i> Добавить</button>
       </form>
     </div>
     {% endif %}
