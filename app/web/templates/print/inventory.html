@@ -32,7 +32,7 @@
     [i].doc_number    str          "МТ-0001234"
     [i].doc_date      date
     [i].doc_kind      str          человекочитаемый тип (передаётся уже переведённым)
-    [i].doc_barcode   str
+    [i].raw_1c_payload dict
     [i].related_realization_number  str | None
     [i].related_realization_date    date | None
 
@@ -162,7 +162,7 @@
     .col-docno { width: 30mm; text-align: center; }
     .col-date  { width: 22mm; text-align: center; }
     .col-rel   { width: 42mm; font-size: 7.5pt; color: #333; }
-    .col-bc    { font-size: 7pt; font-family: monospace; color: #444; }
+    .col-partner { font-size: 8pt; color: #333; }
 
     /* ── Итого ──────────────────────────────────────────── */
     .totals {
@@ -262,11 +262,12 @@
       <th class="col-docno">Номер</th>
       <th class="col-date">Дата</th>
       <th class="col-rel">Связанная реализация</th>
-      <th class="col-bc">Штрихкод</th>
+      <th class="col-partner">Клиент</th>
     </tr>
   </thead>
   <tbody>
     {% for doc in documents %}
+    {% set partner_name = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
     <tr>
       <td class="col-num">{{ loop.index }}</td>
       <td class="col-kind">{{ doc.doc_kind }}</td>
@@ -280,7 +281,7 @@
           {% endif %}
         {% else %}—{% endif %}
       </td>
-      <td class="col-bc">{{ doc.doc_barcode }}</td>
+      <td class="col-partner">{{ partner_name or '—' }}</td>
     </tr>
     {% endfor %}
   </tbody>

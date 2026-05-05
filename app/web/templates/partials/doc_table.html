@@ -9,7 +9,7 @@
       <th>Вид документа</th>
       <th>Номер</th>
       <th>Дата</th>
-      <th>Штрихкод</th>
+      <th>Клиент</th>
       {% if env_status == 'draft' %}
       <th class="col-action"></th>
       {% endif %}
@@ -17,12 +17,13 @@
   </thead>
   <tbody>
     {% for doc in documents %}
+    {% set partner_name = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
     <tr id="doc-row-{{ doc.id }}">
       <td class="col-num text-muted">{{ loop.index }}</td>
       <td>{{ doc.doc_kind }}</td>
       <td class="font-mono">{{ doc.doc_number }}</td>
       <td>{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
-      <td class="font-mono text-muted" style="font-size:11px">{{ doc.doc_barcode }}</td>
+      <td>{{ partner_name or "—" }}</td>
       {% if env_status == 'draft' %}
       <td class="col-action">
         <button class="btn-icon" title="Удалить"

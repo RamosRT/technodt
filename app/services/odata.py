@@ -22,6 +22,18 @@ SELECT_FIELDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+LEGACY_SELECT_FIELDS: dict[str, tuple[str, ...]] = {
+    "Document_ПеремещениеТоваров": ("Number", "Date"),
+    "Document_СчетФактураВыданный": (
+        "Number",
+        "ПредставлениеНомера",
+        "Date",
+        "Корректировочный",
+        "ДокументОснование",
+        "ДокументОснование_Type",
+    ),
+}
+
 KNOWN_DOC_TYPES: tuple[str, ...] = (
     "Document_ПеремещениеТоваров",
     "Document_СчетФактураВыданный",
@@ -42,6 +54,7 @@ class NormalizedDocument:
     doc_date: date
     related_realization_ref: RelatedRef | None
     raw_payload: dict[str, Any]
+    partner_name: str | None = None
     related_realization_number: str | None = None
     related_realization_date: date | None = None
 
@@ -70,6 +83,7 @@ def _extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
 
 
 def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocument:
+    partner_name: str | None = None
     if entity == "Document_ПеремещениеТоваров":
         kind = "Перемещение товаров"
         doc_number = str(payload.get("Number", ""))
@@ -78,6 +92,11 @@ def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocume
         kind = "УКД" if payload.get("Корректировочный") else "УПД"
         doc_number = str(payload.get("ПредставлениеНомера") or payload.get("Number", ""))
         related = _extract_related_ref(payload)
+        partner = payload.get("Партнер")
+        if isinstance(partner, dict):
+            partner_name = partner.get("НаименованиеПолное")
+        else:
+            partner_name = None
     else:
         raise ValueError(f"unknown entity {entity}")
     return NormalizedDocument(
@@ -87,6 +106,7 @@ def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocume
         doc_date=_parse_odata_date(payload.get("Date")),
         related_realization_ref=related,
         raw_payload=payload,
+        partner_name=str(partner_name).strip() if partner_name else None,
     )
 
 
@@ -122,13 +142,28 @@ class OneCClient:
         raise DocumentNotInOneC("Документ не найден в 1С")
 
     async def _get_entity(self, entity: str, guid: uuid.UUID) -> httpx.Response:
-        fields = ",".join(SELECT_FIELDS[entity])
+        params = {"$format": "json", "$select": ",".join(SELECT_FIELDS[entity])}
         url = f"/{entity}(guid'{guid}')"
-        return await self._client.get(url, params={"$format": "json", "$select": fields})
+        resp = await self._client.get(url, params=params)
+        if resp.status_code in (400, 501) and entity in LEGACY_SELECT_FIELDS:
+            return await self._client.get(
+                url,
+                params={"$format": "json", "$select": ",".join(LEGACY_SELECT_FIELDS[entity])},
+            )
+        return resp
 
     async def lookup_document_with_related(self, guid: uuid.UUID) -> NormalizedDocument:
         entity, payload = await self.fetch_document(guid)
         normalized = normalize_document(entity, payload)
+        if entity == "Document_СчетФактураВыданный":
+            partner_name = await self._get_partner_name(entity, guid)
+            if partner_name:
+                normalized.partner_name = partner_name
+                raw_partner = normalized.raw_payload.get("Партнер")
+                if not isinstance(raw_partner, dict):
+                    normalized.raw_payload["Партнер"] = {}
+                    raw_partner = normalized.raw_payload["Партнер"]
+                raw_partner["НаименованиеПолное"] = partner_name
         if normalized.related_realization_ref is not None:
             ref = normalized.related_realization_ref
             try:
@@ -142,6 +177,21 @@ class OneCClient:
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
                 log.warning("realization lookup %s failed: %s", ref.guid, e)
         return normalized
+
+    async def _get_partner_name(self, entity: str, guid: uuid.UUID) -> str | None:
+        url = f"/{entity}(guid'{guid}')/Партнер"
+        try:
+            resp = await self._client.get(
+                url,
+                params={"$format": "json", "$select": "НаименованиеПолное"},
+            )
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError):
+            return None
+        if resp.status_code != 200:
+            return None
+        payload = resp.json()
+        name = payload.get("НаименованиеПолное")
+        return str(name).strip() if name else None
 
     async def _get_realization(self, entity: str, guid: uuid.UUID) -> httpx.Response:
         url = f"/{entity}(guid'{guid}')"

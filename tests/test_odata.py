@@ -97,6 +97,7 @@ def test_normalize_upd_with_related():
     n = normalize_document("Document_СчетФактураВыданный", payload)
     assert n.doc_kind == "УПД"
     assert n.doc_number == "СФВ-000456"
+    assert n.partner_name == 'ООО "ВАТТСЛА"'
     assert n.related_realization_ref is not None
     assert str(n.related_realization_ref.guid) == "33333333-3333-3333-3333-333333333333"
     assert n.related_realization_ref.entity == "Document_РеализацияТоваровУслуг"
@@ -121,6 +122,10 @@ async def test_lookup_with_related_fills_related_fields(odata_client, base_url):
         mock.get(f"/Document_ПеремещениеТоваров(guid'{guid}')").respond(404)
         mock.get(f"/Document_СчетФактураВыданный(guid'{guid}')").respond(200, json=_load("sf_upd.json"))
         mock.get(
+            f"/Document_СчетФактураВыданный(guid'{guid}')/Партнер",
+            params={"$format": "json", "$select": "НаименованиеПолное"},
+        ).respond(200, json={"НаименованиеПолное": 'ООО "ВАТТСЛА"'})
+        mock.get(
             "/Document_РеализацияТоваровУслуг(guid'33333333-3333-3333-3333-333333333333')"
         ).respond(200, json=_load("realizatsiya.json"))
         result = await odata_client.lookup_document_with_related(guid)
@@ -136,8 +141,53 @@ async def test_lookup_with_related_swallows_realization_error(odata_client, base
         mock.get(f"/Document_ПеремещениеТоваров(guid'{guid}')").respond(404)
         mock.get(f"/Document_СчетФактураВыданный(guid'{guid}')").respond(200, json=_load("sf_upd.json"))
         mock.get(
+            f"/Document_СчетФактураВыданный(guid'{guid}')/Партнер",
+            params={"$format": "json", "$select": "НаименованиеПолное"},
+        ).respond(200, json={"НаименованиеПолное": 'ООО "ВАТТСЛА"'})
+        mock.get(
             "/Document_РеализацияТоваровУслуг(guid'33333333-3333-3333-3333-333333333333')"
         ).mock(side_effect=httpx.ConnectError("boom"))
         result = await odata_client.lookup_document_with_related(guid)
     assert result.related_realization_number is None
     assert result.related_realization_date is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_sf_uses_guid_entity_select_without_expand(odata_client, base_url):
+    guid = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    with respx.mock(base_url=base_url) as mock:
+        mock.get(f"/Document_ПеремещениеТоваров(guid'{guid}')").respond(404)
+        mock.get(
+            f"/Document_СчетФактураВыданный(guid'{guid}')",
+            params={
+                "$format": "json",
+                "$select": ",".join(SELECT_FIELDS["Document_СчетФактураВыданный"]),
+            },
+        ).respond(200, json=_load("sf_upd.json"))
+        entity, payload = await odata_client.fetch_document(guid)
+    assert entity == "Document_СчетФактураВыданный"
+    assert payload["Number"] == "СФВ-000456"
+
+
+@pytest.mark.asyncio
+async def test_lookup_sf_fetches_partner_via_navigation_endpoint(odata_client, base_url):
+    guid = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    with respx.mock(base_url=base_url) as mock:
+        mock.get(f"/Document_ПеремещениеТоваров(guid'{guid}')").respond(404)
+        mock.get(
+            f"/Document_СчетФактураВыданный(guid'{guid}')",
+            params={
+                "$format": "json",
+                "$select": ",".join(SELECT_FIELDS["Document_СчетФактураВыданный"]),
+            },
+        ).respond(200, json=_load("sf_upd.json"))
+        mock.get(
+            f"/Document_СчетФактураВыданный(guid'{guid}')/Партнер",
+            params={"$format": "json", "$select": "НаименованиеПолное"},
+        ).respond(200, json={"НаименованиеПолное": 'ООО "ВАТТСЛА"'})
+        mock.get(
+            "/Document_РеализацияТоваровУслуг(guid'33333333-3333-3333-3333-333333333333')"
+        ).respond(200, json=_load("realizatsiya.json"))
+        n = await odata_client.lookup_document_with_related(guid)
+    assert n.partner_name == 'ООО "ВАТТСЛА"'
+    assert n.raw_payload.get("Партнер", {}).get("НаименованиеПолное") == 'ООО "ВАТТСЛА"'
