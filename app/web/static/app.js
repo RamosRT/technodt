@@ -15,6 +15,54 @@ const App = {
 
 const SCANNER = document.getElementById("scanner-input");
 
+let audioCtx = null;
+let audioEnabled = false;
+
+function unlockAudio() {
+  if (audioEnabled) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = audioCtx || new Ctx();
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    audioEnabled = true;
+  } catch (_) {
+    // Silent fallback: UI should keep working even if audio is unavailable.
+  }
+}
+
+document.addEventListener("pointerdown", unlockAudio, { once: true });
+document.addEventListener("keydown", unlockAudio, { once: true });
+
+function beep(freq = 880, durationMs = 90, type = "sine", volume = 0.05) {
+  if (!audioEnabled || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + durationMs / 1000 + 0.02);
+}
+
+function playFeedback(kind) {
+  if (kind === "success") {
+    beep(880, 70, "triangle", 0.045);
+    setTimeout(() => beep(1175, 85, "triangle", 0.045), 80);
+    return;
+  }
+  if (kind === "error") {
+    beep(300, 120, "sawtooth", 0.06);
+  }
+}
+
 // Returns true when el is a visible user-facing input (not the hidden scanner itself)
 function isUserInput(el) {
   if (!el || el === SCANNER) return false;
@@ -287,6 +335,15 @@ document.addEventListener("htmx:responseError", (e) => {
   showToast(text, "error");
 });
 
+document.addEventListener("htmx:afterRequest", (e) => {
+  if (!e?.detail?.successful) return;
+  const path = e.detail.requestConfig?.path || e.detail.pathInfo?.requestPath || "";
+  if (!path) return;
+  if (path.endsWith("/documents") || path.endsWith("/verify/scan")) {
+    playFeedback("success");
+  }
+});
+
 // ─── Toast notifications ────────────────────────────────────────
 function showToast(msg, type = "info") {
   let container = document.getElementById("toast-container");
@@ -304,6 +361,9 @@ function showToast(msg, type = "info") {
   toast.textContent = msg;
   Object.assign(toast.style, { minWidth: "260px", boxShadow: "0 4px 16px rgba(0,0,0,.2)" });
   container.appendChild(toast);
+  if (type === "error" || type === "success") {
+    playFeedback(type);
+  }
   setTimeout(() => toast.remove(), 3500);
 }
 
