@@ -11,7 +11,7 @@ def _bc(g): return str(int.from_bytes(_u.UUID(g).bytes, "big"))
 
 def _norm():
     return NormalizedDocument(
-        entity="Document_ПеремещениеТоваров", doc_kind="Перемещение товаров",
+        entity="Document_ПеремещениеТоваров", doc_kind="ПРМ",
         doc_number="X", doc_date=_date(2026, 4, 20),
         related_realization_ref=None, raw_payload={"Number": "X", "Date": "2026-04-20T00:00:00"},
     )

@@ -35,7 +35,7 @@ async def _sealed_envelope(db_session):
         doc_barcode="1",
         doc_guid="00000000-0000-0000-0000-000000000001",
         doc_entity="Document_ПеремещениеТоваров",
-        doc_kind="Перемещение товаров",
+        doc_kind="ПРМ",
         doc_number="ПТ-1",
         doc_date=date(2026, 4, 30),
         raw_1c_payload={"Number": "ПТ-1"},

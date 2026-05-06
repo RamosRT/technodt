@@ -70,11 +70,21 @@ function isUserInput(el) {
   return (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && el.type !== "hidden";
 }
 
+function scannerFocusEnabled() {
+  return isLoginScreen() || App.mode === "register" || App.mode === "verify";
+}
+
+function isLoginScreen() {
+  return document.body && document.body.classList.contains("is-login");
+}
+
 // Steal focus back to scanner only when a real user-input is NOT active
 document.addEventListener("click", (e) => {
+  if (!scannerFocusEnabled()) return;
   if (SCANNER && !isUserInput(e.target)) SCANNER.focus();
 });
 document.addEventListener("keydown", () => {
+  if (!scannerFocusEnabled()) return;
   if (SCANNER && !isUserInput(document.activeElement)) SCANNER.focus();
 });
 
@@ -120,6 +130,7 @@ SCANNER && SCANNER.addEventListener("keydown", (e) => {
   const barcode = sanitizeScannedInput(SCANNER.value);
   SCANNER.value = "";
   if (!barcode) return;
+  if (handleLoginQrScan(barcode)) return;
   dispatch(barcode);
 });
 
@@ -133,6 +144,143 @@ function normalizeBarcodeForCompare(value) {
   if (!value) return "";
   // Compare loosely: ignore case and separators like spaces/hyphens.
   return value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+function parseLoginCandidateTokens(raw) {
+  const candidate = (raw || "").trim();
+  if (!candidate) return { server: "", username: "", pin: "" };
+  if (candidate.includes("=") && !candidate.includes("|")) {
+    const kv = {};
+    candidate.split(/[&;\n]/).forEach((token) => {
+      const idx = token.indexOf("=");
+      if (idx <= 0 || idx >= token.length - 1) return;
+      const key = token.slice(0, idx).trim().toLowerCase();
+      const value = token.slice(idx + 1).trim();
+      kv[key] = value;
+    });
+    return {
+      server: kv.server || kv.server_url || kv.url || kv.host || "",
+      username: kv.username || kv.user || kv.operator || kv.login || "",
+      pin: kv.pin || kv.password || kv.code || "",
+    };
+  }
+  const parts = candidate.split("|").map((p) => p.trim());
+  if (parts.length === 4) {
+    return { server: parts[1], username: parts[2], pin: parts[3] };
+  }
+  return { server: "", username: "", pin: "" };
+}
+
+function fixMistypedRuLayout(value) {
+  const map = {
+    й: "q", ц: "w", у: "e", к: "r", е: "t", н: "y", г: "u", ш: "i", щ: "o", з: "p", х: "[", ъ: "]",
+    ф: "a", ы: "s", в: "d", а: "f", п: "g", р: "h", о: "j", л: "k", д: "l", ж: ";", э: "'",
+    я: "z", ч: "x", с: "c", м: "v", и: "b", т: "n", ь: "m", б: ",", ю: ".",
+    Й: "Q", Ц: "W", У: "E", К: "R", Е: "T", Н: "Y", Г: "U", Ш: "I", Щ: "O", З: "P", Х: "{", Ъ: "}",
+    Ф: "A", Ы: "S", В: "D", А: "F", П: "G", Р: "H", О: "J", Л: "K", Д: "L", Ж: ":", Э: "\"",
+    Я: "Z", Ч: "X", С: "C", М: "V", И: "B", Т: "N", Ь: "M", Б: "<", Ю: ">",
+  };
+  return String(value || "")
+    .split("")
+    .map((ch) => map[ch] || ch)
+    .join("");
+}
+
+function decodeCp1251Utf8Mojibake(value) {
+  const cp1251ExtendedMap = {
+    "\u0402": 0x80, "\u0403": 0x81, "\u201A": 0x82, "\u0453": 0x83,
+    "\u201E": 0x84, "\u2026": 0x85, "\u2020": 0x86, "\u2021": 0x87,
+    "\u20AC": 0x88, "\u2030": 0x89, "\u0409": 0x8a, "\u2039": 0x8b,
+    "\u040A": 0x8c, "\u040C": 0x8d, "\u040B": 0x8e, "\u040F": 0x8f,
+    "\u0452": 0x90, "\u2018": 0x91, "\u2019": 0x92, "\u201C": 0x93,
+    "\u201D": 0x94, "\u2022": 0x95, "\u2013": 0x96, "\u2014": 0x97,
+    "\u2122": 0x99, "\u0459": 0x9a, "\u203A": 0x9b, "\u045A": 0x9c,
+    "\u045C": 0x9d, "\u045B": 0x9e, "\u045F": 0x9f, "\u040E": 0xa1,
+    "\u045E": 0xa2, "\u0408": 0xa3, "\u0490": 0xa5, "\u0401": 0xa8,
+    "\u0404": 0xaa, "\u0407": 0xaf, "\u0406": 0xb2, "\u0456": 0xb3,
+    "\u0491": 0xb4, "\u0451": 0xb8, "\u2116": 0xb9, "\u0454": 0xba,
+    "\u0458": 0xbc, "\u0405": 0xbd, "\u0455": 0xbe, "\u0457": 0xbf,
+  };
+  const cp1251Byte = (ch) => {
+    const code = ch.charCodeAt(0);
+    if (code <= 0x7f) return code;
+    if (cp1251ExtendedMap[ch] != null) return cp1251ExtendedMap[ch];
+    if (code <= 0x00ff) return code;
+    if (code >= 0x0410 && code <= 0x044f) return code - 0x350;
+    return null;
+  };
+  const bytes = [];
+  for (const ch of String(value || "")) {
+    const b = cp1251Byte(ch);
+    if (b == null) return String(value || "");
+    bytes.push(b);
+  }
+  try {
+    const decoded = new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+    return decoded || String(value || "");
+  } catch (_) {
+    return String(value || "");
+  }
+}
+
+function parseLoginQr(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return null;
+  const withoutAim = /^\][A-Za-z]\d/.test(trimmed) ? trimmed.slice(3) : trimmed;
+  const normalized = withoutAim.replace(/\u0000/g, " ").trim();
+  const direct = normalized.split("|").map((p) => p.trim());
+  const isLegacy = direct.length === 4 && direct[0].toUpperCase() === "KTLOGIN";
+  const legacy = isLegacy
+    ? { server: direct[1], username: direct[2], pin: direct[3] }
+    : { server: "", username: "", pin: "" };
+
+  let uri = { server: "", username: "", pin: "" };
+  if (/^ktlogin:\/\//i.test(normalized)) {
+    const query = normalized.includes("?") ? normalized.split("?").slice(1).join("?") : "";
+    try {
+      uri = parseLoginCandidateTokens(decodeURIComponent(query));
+    } catch (_) {
+      uri = { server: "", username: "", pin: "" };
+    }
+  }
+  const slashParts = normalized.split("/").map((p) => p.trim());
+  const slashTag = fixMistypedRuLayout(slashParts[0] || "").toUpperCase();
+  const slashCandidate = slashParts.length >= 4 && slashTag === "KTLOGIN"
+    ? {
+        server: fixMistypedRuLayout(slashParts[1] || "")
+          .replace("..", "//")
+          .replace(/>/g, "/")
+          .replace(/^\s*h..p:\/\//i, "http://")
+          .replace(/^\s*https:\/\//i, "https://"),
+        username: decodeCp1251Utf8Mojibake(slashParts[2] || ""),
+        pin: (slashParts[3] || "").trim(),
+      }
+    : { server: "", username: "", pin: "" };
+  const keyValue = parseLoginCandidateTokens(normalized);
+  const picked = legacy.server ? legacy : (uri.server ? uri : (slashCandidate.server ? slashCandidate : keyValue));
+  const pin = (picked.pin || "").trim();
+  const username = (picked.username || "").trim();
+  const server = (picked.server || "").trim();
+  if (!server || !username || !/^\d{4}$/.test(pin)) return null;
+  return { serverUrl: server, username, password: pin };
+}
+
+function handleLoginQrScan(raw) {
+  if (!isLoginScreen()) return false;
+  const form = document.querySelector('form[hx-post="/ui/operator"]');
+  const nameInput = document.getElementById("op-name");
+  const passInput = document.getElementById("op-password");
+  if (!form || !nameInput || !passInput) return false;
+  const qr = parseLoginQr(raw);
+  if (!qr) {
+    showToast("QR входа не распознан", "error");
+    return true;
+  }
+  nameInput.value = qr.username;
+  passInput.value = qr.password;
+  if (typeof form.requestSubmit === "function") form.requestSubmit();
+  else form.submit();
+  return true;
 }
 
 async function dispatch(barcode) {
@@ -338,8 +486,13 @@ document.addEventListener("htmx:responseError", (e) => {
 document.addEventListener("htmx:afterRequest", (e) => {
   if (!e?.detail?.successful) return;
   const path = e.detail.requestConfig?.path || e.detail.pathInfo?.requestPath || "";
+  const method = String(
+    e.detail.requestConfig?.verb || e.detail.requestConfig?.method || ""
+  ).toUpperCase();
   if (!path) return;
-  if (path.endsWith("/documents") || path.endsWith("/verify/scan")) {
+  const isEnvelopeSeal = method === "POST" && path.endsWith("/seal");
+  const isVerifyFinish = method === "POST" && path.endsWith("/verify/finish");
+  if (isEnvelopeSeal || isVerifyFinish) {
     playFeedback("success");
   }
 });

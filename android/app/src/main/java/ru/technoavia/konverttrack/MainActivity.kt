@@ -836,6 +836,9 @@ private fun LoginScreen(
     bindBarcode: (((String) -> Unit)?) -> Unit,
     onLoginSuccess: (String, String, String?, String?) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val compactHeight = configuration.screenHeightDp <= 700
+
     var serverUrl by rememberSaveable { mutableStateOf(savedServerUrl) }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -917,11 +920,11 @@ private fun LoginScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(62.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 34.dp else 62.dp))
             LoginLogoLockup(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(86.dp)
+                    .height(if (compactHeight) 76.dp else 86.dp)
                     .clickable {
                         logoTapCount += 1
                         if (logoTapCount >= 5) {
@@ -935,7 +938,7 @@ private fun LoginScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = FgMuted,
             )
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 26.dp else 48.dp))
             LoginInputCard(
                 icon = R.drawable.ic_user_round,
                 label = "Имя оператора",
@@ -946,7 +949,7 @@ private fun LoginScreen(
                 },
                 placeholder = "ivan.petrov",
             )
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 14.dp else 22.dp))
             LoginInputCard(
                 icon = R.drawable.ic_lock_keyhole,
                 label = "Пароль",
@@ -962,10 +965,10 @@ private fun LoginScreen(
                 onTrailingClick = { passwordVisible = !passwordVisible },
             )
             if (errorText != null) {
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(if (compactHeight) 12.dp else 18.dp))
                 ScanFeedbackBanner(errorText, isError = true)
             } else {
-                Spacer(modifier = Modifier.height(30.dp))
+                Spacer(modifier = Modifier.height(if (compactHeight) 18.dp else 30.dp))
             }
             Button(
                 onClick = { submitLogin() },
@@ -996,19 +999,20 @@ private fun LoginScreen(
                     Text("Войти", style = MaterialTheme.typography.titleLarge, color = Color.White)
                 }
             }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 10.dp else 16.dp))
+            LoginDeviceIndicator(
+                text = "Устройство: ${Build.MODEL.ifBlank { "ТСД" }} · DataWedge",
+            )
             Spacer(modifier = Modifier.weight(1f))
-            StaticLogoBadge(modifier = Modifier.align(Alignment.End).offset(x = 22.dp, y = 16.dp))
-            Spacer(modifier = Modifier.height(18.dp))
+            StaticLogoBadge(
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .offset(x = if (compactHeight) 10.dp else 18.dp, y = 0.dp),
+            )
+            Spacer(modifier = Modifier.height(if (compactHeight) 8.dp else 18.dp))
             Text("v1.2.0 · build 184", style = MaterialTheme.typography.labelSmall, color = FgMuted)
-            Spacer(modifier = Modifier.height(34.dp))
+            Spacer(modifier = Modifier.height(if (compactHeight) 14.dp else 34.dp))
         }
-        LoginDeviceIndicator(
-            text = "Устройство: ${Build.MODEL.ifBlank { "ТСД" }} · DataWedge",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 66.dp),
-        )
         if (isLoading) {
             BrandLoadingOverlay("Вход в систему...")
         }
@@ -1017,6 +1021,11 @@ private fun LoginScreen(
 
 @Composable
 private fun LoginLogoLockup(modifier: Modifier = Modifier) {
+    val configuration = LocalConfiguration.current
+    val compactWidth = configuration.screenWidthDp <= 360
+    val logoFontSize = if (compactWidth) 26.sp else 32.sp
+    val logoLineHeight = if (compactWidth) 30.sp else 36.sp
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -1035,10 +1044,13 @@ private fun LoginLogoLockup(modifier: Modifier = Modifier) {
             "ТехноКонверт",
             style = TextStyle(
                 color = BrandInk,
-                fontSize = 32.sp,
-                lineHeight = 36.sp,
+                fontSize = logoFontSize,
+                lineHeight = logoLineHeight,
                 fontWeight = FontWeight.Bold,
             ),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
         )
     }
 }

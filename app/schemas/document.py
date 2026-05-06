@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class DocumentOut(BaseModel):
@@ -18,6 +18,13 @@ class DocumentOut(BaseModel):
     related_realization_date: date | None = None
     added_at: datetime
     scanned_at_verification: datetime | None = None
+
+    @field_validator("doc_kind", mode="before")
+    @classmethod
+    def normalize_transfer_kind(cls, value: str) -> str:
+        if value == "Перемещение товаров":
+            return "ПРМ"
+        return value
 
 
 class DocumentAddRequest(BaseModel):

@@ -13,7 +13,7 @@ def _bc(g: str) -> str:
 def _norm():
     return NormalizedDocument(
         entity="Document_ПеремещениеТоваров",
-        doc_kind="Перемещение товаров",
+        doc_kind="ПРМ",
         doc_number="ПЕР-1",
         doc_date=_date(2026, 4, 20),
         related_realization_ref=None,
@@ -121,7 +121,7 @@ async def test_post_document_adds_doc(client, stub_one_c):
     r = await client.post(f"/api/envelopes/{env['id']}/documents", json={"barcode": bc})
     assert r.status_code == 201
     body = r.json()
-    assert body["doc_kind"] == "Перемещение товаров"
+    assert body["doc_kind"] == "ПРМ"
     assert body["doc_barcode"] == bc
 
 

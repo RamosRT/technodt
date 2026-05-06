@@ -2635,17 +2635,25 @@ body.is-login .main-content::after {
 .admin-switch {
   width: 42px;
   height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
   border: 0;
   border-radius: 999px;
   padding: 3px;
   background: #c9d4e6;
   cursor: pointer;
+  transition: background-color .15s ease;
 }
 
 .admin-switch span {
   display: block;
   width: 16px;
   height: 16px;
+  flex: 0 0 16px;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0,0,0,.18);
@@ -2654,10 +2662,11 @@ body.is-login .main-content::after {
 
 .admin-switch.is-on {
   background: #173d72;
+  justify-content: flex-end;
 }
 
 .admin-switch.is-on span {
-  transform: translateX(20px);
+  transform: none;
 }
 
 .admin-inline-create {
@@ -2790,6 +2799,21 @@ body.is-login .main-content::after {
   background: #fff;
   padding: 14px 16px;
 }
+.onec-stat-button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.onec-stat-button:hover {
+  border-color: #d0dced;
+  box-shadow: 0 3px 10px rgba(16, 34, 74, .08);
+}
+.onec-mark-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr) minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
 
 .onec-mark-stat i,
 .onec-mark-stat svg {
@@ -2887,7 +2911,8 @@ body.is-login .main-content::after {
   }
   .admin-inline-create,
   .admin-system-grid,
-  .onec-mark-summary {
+  .onec-mark-summary,
+  .onec-mark-filter-bar {
     grid-template-columns: 1fr;
   }
 }

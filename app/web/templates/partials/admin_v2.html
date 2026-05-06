@@ -296,62 +296,7 @@
           <p>Последние попытки проставить даты регистрации, запечатывания и проверки документов.</p>
         </div>
       </header>
-
-      <div class="onec-mark-summary">
-        <div class="onec-mark-stat">
-          <i data-lucide="check-circle-2"></i>
-          <div><strong>{{ onec_mark_stats.success_total }}</strong><span>Успешно</span></div>
-        </div>
-        <div class="onec-mark-stat mark-stat-error">
-          <i data-lucide="circle-alert"></i>
-          <div><strong>{{ onec_mark_stats.failed_total }}</strong><span>Ошибок всего</span></div>
-        </div>
-        <div class="onec-mark-stat">
-          <i data-lucide="calendar-clock"></i>
-          <div><strong>{{ onec_mark_stats.recent_failed }}</strong><span>Ошибок сегодня</span></div>
-        </div>
-      </div>
-
-      <div class="admin-table-card">
-        <table class="admin-settings-table onec-mark-table">
-          <thead>
-            <tr>
-              <th>Время</th>
-              <th>Статус</th>
-              <th>Конверт</th>
-              <th>Документ</th>
-              <th>Отметка</th>
-              <th>Ошибка</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in onec_mark_rows %}
-            <tr>
-              <td class="admin-mono">{{ row.log.attempted_at.strftime('%d.%m %H:%M') }}</td>
-              <td>
-                {% if row.log.status == "success" %}
-                <span class="state-badge state-on">Отмечен</span>
-                {% else %}
-                <span class="state-badge state-off">Ошибка</span>
-                {% endif %}
-              </td>
-              <td>
-                <strong>{{ row.envelope_number or "—" }}</strong>
-                {% if row.envelope_barcode %}<span>{{ row.envelope_barcode }}</span>{% endif %}
-              </td>
-              <td class="admin-mono">
-                <strong>{{ row.log.doc_guid|string|truncate(18, True, '...') }}</strong>
-                <span>{{ row.log.doc_entity }}</span>
-              </td>
-              <td>{{ row.log.property_name }}</td>
-              <td class="onec-error-cell">{{ row.log.error or "—" }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6" class="ops-empty">Отметок в 1С пока нет</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <div id="onec-marks-panel">{% include "partials/onec_marks_panel.html" %}</div>
     </section>
 
     <section class="admin-panel admin-panel-system">

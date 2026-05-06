@@ -173,14 +173,44 @@ async def _audit_screen_context(
     }
 
 
-async def _onec_marks_context(session: AsyncSession) -> dict:
+async def _onec_marks_context(
+    session: AsyncSession,
+    *,
+    status: str | None = None,
+    doc_number: str | None = None,
+    envelope: str | None = None,
+) -> dict:
+    from sqlalchemy import or_
+
+    stmt = (
+        select(
+            OneCMarkLog,
+            Envelope.number,
+            Envelope.barcode,
+            EnvelopeDocument.doc_kind,
+            EnvelopeDocument.doc_number,
+            EnvelopeDocument.doc_date,
+        )
+        .outerjoin(Envelope, OneCMarkLog.envelope_id == Envelope.id)
+        .outerjoin(
+            EnvelopeDocument,
+            (EnvelopeDocument.envelope_id == OneCMarkLog.envelope_id)
+            & (EnvelopeDocument.doc_guid == OneCMarkLog.doc_guid),
+        )
+    )
+    if status == "failed":
+        stmt = stmt.where(OneCMarkLog.status == "failed")
+    elif status == "success":
+        stmt = stmt.where(OneCMarkLog.status == "success")
+    if doc_number:
+        stmt = stmt.where(EnvelopeDocument.doc_number.ilike(f"%{doc_number.strip()}%"))
+    if envelope:
+        term = f"%{envelope.strip()}%"
+        stmt = stmt.where(or_(Envelope.number.ilike(term), Envelope.barcode.ilike(term)))
     rows = list(
         (
             await session.execute(
-                select(OneCMarkLog, Envelope.number, Envelope.barcode)
-                .outerjoin(Envelope, OneCMarkLog.envelope_id == Envelope.id)
-                .order_by(OneCMarkLog.attempted_at.desc(), OneCMarkLog.id.desc())
-                .limit(80)
+                stmt.order_by(OneCMarkLog.attempted_at.desc(), OneCMarkLog.id.desc()).limit(80)
             )
         ).all()
     )
@@ -211,8 +241,11 @@ async def _onec_marks_context(session: AsyncSession) -> dict:
             "log": log_row,
             "envelope_number": envelope_number,
             "envelope_barcode": envelope_barcode,
+            "doc_kind": doc_kind,
+            "doc_number": doc_number,
+            "doc_date": doc_date,
         }
-        for log_row, envelope_number, envelope_barcode in rows
+        for log_row, envelope_number, envelope_barcode, doc_kind, doc_number, doc_date in rows
     ]
     return {
         "onec_mark_rows": mark_rows,
@@ -221,6 +254,11 @@ async def _onec_marks_context(session: AsyncSession) -> dict:
             "failed_total": failed_total,
             "recent_failed": recent_failed,
             "total": success_total + failed_total,
+        },
+        "onec_mark_filters": {
+            "status": status or "",
+            "doc_number": doc_number or "",
+            "envelope": envelope or "",
         },
     }
 
@@ -958,6 +996,29 @@ async def _admin_v2_response(
             **audit_ctx,
             **onec_marks_ctx,
         },
+    )
+
+
+@router.get("/ui/onec-marks", response_class=HTMLResponse)
+async def ui_onec_marks(
+    request: Request,
+    status: str | None = None,
+    doc_number: str | None = None,
+    envelope: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    return templates.TemplateResponse(
+        request,
+        "partials/onec_marks_panel.html",
+        await _onec_marks_context(
+            session,
+            status=status or None,
+            doc_number=doc_number or None,
+            envelope=envelope or None,
+        ),
     )
 
 

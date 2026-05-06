@@ -9,6 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Branch, Envelope, EnvelopeDocument, EnvelopeStatus
 
 
+LEGACY_TRANSFER_KIND = "Перемещение товаров"
+SHORT_TRANSFER_KIND = "ПРМ"
+
+
+def _canonical_doc_kind(value: str) -> str:
+    return SHORT_TRANSFER_KIND if value == LEGACY_TRANSFER_KIND else value
+
+
 def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
     start = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
     end = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
@@ -47,7 +55,10 @@ def _base_documents_stmt(
     if end is not None:
         stmt = stmt.where(EnvelopeDocument.added_at <= end)
     if doc_kind:
-        stmt = stmt.where(EnvelopeDocument.doc_kind == doc_kind)
+        if doc_kind == SHORT_TRANSFER_KIND:
+            stmt = stmt.where(EnvelopeDocument.doc_kind.in_([SHORT_TRANSFER_KIND, LEGACY_TRANSFER_KIND]))
+        else:
+            stmt = stmt.where(EnvelopeDocument.doc_kind == doc_kind)
     status_filter = _status_expr(status)
     if status_filter is not None:
         stmt = stmt.where(status_filter)
@@ -150,7 +161,7 @@ async def list_documents(
                 "doc_barcode": doc.doc_barcode,
                 "doc_guid": doc.doc_guid,
                 "doc_entity": doc.doc_entity,
-                "doc_kind": doc.doc_kind,
+                "doc_kind": _canonical_doc_kind(doc.doc_kind),
                 "doc_number": doc.doc_number,
                 "doc_date": doc.doc_date,
                 "added_at": doc.added_at,

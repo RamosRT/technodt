@@ -91,8 +91,15 @@ def _extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
 def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocument:
     partner_name: str | None = None
     if entity == "Document_ПеремещениеТоваров":
-        kind = "Перемещение товаров"
+        kind = "ПРМ"
         doc_number = str(payload.get("Number", ""))
+        receiver = payload.get("СкладПолучатель")
+        if isinstance(receiver, dict):
+            partner_name = (
+                receiver.get("Description")
+                or receiver.get("Наименование")
+                or receiver.get("НаименованиеПолное")
+            )
         related = None
     elif entity == "Document_СчетФактураВыданный":
         kind = "УКД" if payload.get("Корректировочный") else "УПД"
@@ -161,6 +168,15 @@ class OneCClient:
     async def lookup_document_with_related(self, guid: uuid.UUID) -> NormalizedDocument:
         entity, payload = await self.fetch_document(guid)
         normalized = normalize_document(entity, payload)
+        if entity == "Document_ПеремещениеТоваров":
+            receiver_name = await self._get_transfer_receiver_name(entity, guid)
+            if receiver_name:
+                normalized.partner_name = receiver_name
+                raw_receiver = normalized.raw_payload.get("СкладПолучатель")
+                if not isinstance(raw_receiver, dict):
+                    normalized.raw_payload["СкладПолучатель"] = {}
+                    raw_receiver = normalized.raw_payload["СкладПолучатель"]
+                raw_receiver["Description"] = receiver_name
         if entity == "Document_СчетФактураВыданный":
             partner_name = await self._get_partner_name(entity, guid)
             if partner_name:
@@ -203,6 +219,26 @@ class OneCClient:
         url = f"/{entity}(guid'{guid}')"
         return await self._client.get(url, params={"$format": "json", "$select": "Number,Date"})
 
+    async def _get_transfer_receiver_name(self, entity: str, guid: uuid.UUID) -> str | None:
+        url = f"/{entity}(guid'{guid}')/СкладПолучатель"
+        params_variants = (
+            {"$format": "json", "$select": "Description,Наименование,НаименованиеПолное"},
+            {"$format": "json"},
+        )
+        for params in params_variants:
+            try:
+                resp = await self._client.get(url, params=params)
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError):
+                return None
+            if resp.status_code != 200:
+                continue
+            payload = resp.json()
+            for key in ("Description", "Наименование", "НаименованиеПолное"):
+                value = payload.get(key)
+                if value:
+                    return str(value).strip()
+        return None
+
     async def mark_document(
         self,
         doc_guid: uuid.UUID,
@@ -228,7 +264,10 @@ class OneCClient:
                 data = resp.json()
             except ValueError:
                 data = {}
-            if str(data.get("code")) == "15":
+            nested_error = data.get("odata.error") if isinstance(data, dict) else None
+            nested_code = nested_error.get("code") if isinstance(nested_error, dict) else None
+            err_code = data.get("code") if isinstance(data, dict) else None
+            if str(err_code or nested_code) == "15":
                 patch_url = (
                     f"{url}(Объект='{doc_guid}',"
                     f"Объект_Type='StandardODATA.{doc_entity}',"

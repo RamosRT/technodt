@@ -86,7 +86,7 @@ async def test_fetch_document_network_error_raises_unavailable(odata_client, bas
 def test_normalize_peremeshchenie():
     payload = _load("peremeshchenie.json")
     n = normalize_document("Document_ПеремещениеТоваров", payload)
-    assert n.doc_kind == "Перемещение товаров"
+    assert n.doc_kind == "ПРМ"
     assert n.doc_number == "ПЕР-000123"
     assert n.doc_date == _date(2026, 4, 20)
     assert n.related_realization_ref is None
@@ -191,3 +191,23 @@ async def test_lookup_sf_fetches_partner_via_navigation_endpoint(odata_client, b
         n = await odata_client.lookup_document_with_related(guid)
     assert n.partner_name == 'ООО "ВАТТСЛА"'
     assert n.raw_payload.get("Партнер", {}).get("НаименованиеПолное") == 'ООО "ВАТТСЛА"'
+
+
+@pytest.mark.asyncio
+async def test_lookup_transfer_fetches_receiver_via_navigation_endpoint(odata_client, base_url):
+    guid = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    with respx.mock(base_url=base_url) as mock:
+        mock.get(
+            f"/Document_ПеремещениеТоваров(guid'{guid}')",
+            params={
+                "$format": "json",
+                "$select": ",".join(SELECT_FIELDS["Document_ПеремещениеТоваров"]),
+            },
+        ).respond(200, json=_load("peremeshchenie.json"))
+        mock.get(
+            f"/Document_ПеремещениеТоваров(guid'{guid}')/СкладПолучатель",
+            params={"$format": "json", "$select": "Description,Наименование,НаименованиеПолное"},
+        ).respond(200, json={"Description": "Склад КАЗ-01"})
+        n = await odata_client.lookup_document_with_related(guid)
+    assert n.partner_name == "Склад КАЗ-01"
+    assert n.raw_payload.get("СкладПолучатель", {}).get("Description") == "Склад КАЗ-01"

@@ -22,7 +22,7 @@ FAKE_SVG = "<svg xmlns='http://www.w3.org/2000/svg'><rect/></svg>"
 def _norm():
     return NormalizedDocument(
         entity="Document_ПеремещениеТоваров",
-        doc_kind="Перемещение товаров",
+        doc_kind="ПРМ",
         doc_number="ПЕР-1",
         doc_date=date(2026, 4, 20),
         related_realization_ref=None,

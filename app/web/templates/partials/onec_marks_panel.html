@@ -1,0 +1,81 @@
+<div class="onec-mark-summary">
+  <div class="onec-mark-stat">
+    <i data-lucide="check-circle-2"></i>
+    <div><strong>{{ onec_mark_stats.success_total }}</strong><span>Успешно</span></div>
+  </div>
+  <button class="onec-mark-stat mark-stat-error onec-stat-button"
+          hx-get="/ui/onec-marks?status=failed&doc_number={{ onec_mark_filters.doc_number|urlencode }}&envelope={{ onec_mark_filters.envelope|urlencode }}"
+          hx-target="#onec-marks-panel"
+          hx-swap="innerHTML"
+          type="button">
+    <i data-lucide="circle-alert"></i>
+    <div><strong>{{ onec_mark_stats.failed_total }}</strong><span>Ошибок всего</span></div>
+  </button>
+  <div class="onec-mark-stat">
+    <i data-lucide="calendar-clock"></i>
+    <div><strong>{{ onec_mark_stats.recent_failed }}</strong><span>Ошибок сегодня</span></div>
+  </div>
+</div>
+
+<form class="onec-mark-filter-bar"
+      hx-get="/ui/onec-marks"
+      hx-target="#onec-marks-panel"
+      hx-swap="innerHTML">
+  <select class="form-control" name="status">
+    <option value="" {% if not onec_mark_filters.status %}selected{% endif %}>Все статусы</option>
+    <option value="failed" {% if onec_mark_filters.status == "failed" %}selected{% endif %}>Ошибка</option>
+    <option value="success" {% if onec_mark_filters.status == "success" %}selected{% endif %}>Успех</option>
+  </select>
+  <input class="form-control" name="doc_number" value="{{ onec_mark_filters.doc_number }}" placeholder="№ документа">
+  <input class="form-control" name="envelope" value="{{ onec_mark_filters.envelope }}" placeholder="№ конверта / штрихкод">
+  <button class="btn btn-primary btn-sm" type="submit">Применить</button>
+  <button class="btn btn-ghost btn-sm"
+          type="button"
+          hx-get="/ui/onec-marks"
+          hx-target="#onec-marks-panel"
+          hx-swap="innerHTML">Сбросить</button>
+</form>
+
+<div class="admin-table-card">
+  <table class="admin-settings-table onec-mark-table">
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Статус</th>
+        <th>Конверт</th>
+        <th>Документ</th>
+        <th>Отметка</th>
+        <th>Ошибка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in onec_mark_rows %}
+      <tr>
+        <td class="admin-mono">{{ row.log.attempted_at.strftime('%d.%m %H:%M') }}</td>
+        <td>
+          {% if row.log.status == "success" %}
+          <span class="state-badge state-on">Отмечен</span>
+          {% else %}
+          <span class="state-badge state-off">Ошибка</span>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ row.envelope_number or "—" }}</strong>
+          {% if row.envelope_barcode %}<span>{{ row.envelope_barcode }}</span>{% endif %}
+        </td>
+        <td>
+          <strong>{{ row.doc_kind or row.log.doc_entity }}</strong>
+          <span>
+            № {{ row.doc_number or "—" }}
+            {% if row.doc_date %} · {{ row.doc_date.strftime('%d.%m.%Y') }}{% endif %}
+          </span>
+        </td>
+        <td>{{ row.log.property_name }}</td>
+        <td class="onec-error-cell">{{ row.log.error or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="ops-empty">По выбранным фильтрам нет данных</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

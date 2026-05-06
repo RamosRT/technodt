@@ -71,6 +71,25 @@ async def test_mark_document_patches_on_duplicate_code_15(client):
 
 
 @pytest.mark.asyncio
+async def test_mark_document_patches_on_nested_odata_error_code_15(client):
+    with respx.mock(base_url=BASE) as mock:
+        post_route = mock.post(
+            url__regex=r".*/InformationRegister_.*",
+            params={"$format": "json"},
+        ).respond(
+            400,
+            json={"odata.error": {"code": "15", "message": {"lang": "ru", "value": "duplicate"}}},
+        )
+        patch_route = mock.patch(
+            url__regex=r".*/InformationRegister_.*",
+            params={"$format": "json"},
+        ).respond(200)
+        await client.mark_document(DOC_GUID, ENTITY, PROP_KEY, VALUE)
+    assert post_route.call_count == 1
+    assert patch_route.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_mark_document_raises_on_server_error(client):
     with respx.mock(base_url=BASE) as mock:
         mock.post(

@@ -95,7 +95,7 @@ async def test_get_by_barcode_not_found_raises(db_session):
 def _normalized_peremeshchenie() -> NormalizedDocument:
     return NormalizedDocument(
         entity="Document_ПеремещениеТоваров",
-        doc_kind="Перемещение товаров",
+        doc_kind="ПРМ",
         doc_number="ПЕР-000123",
         doc_date=_date(2026, 4, 20),
         related_realization_ref=None,
@@ -115,7 +115,7 @@ async def test_add_document_happy_path(db_session):
     doc = await svc.add_document(db_session, envelope=env, barcode=barcode,
                                   operator="A", one_c=one_c)
     await db_session.commit()
-    assert doc.doc_kind == "Перемещение товаров"
+    assert doc.doc_kind == "ПРМ"
     assert doc.doc_number == "ПЕР-000123"
     assert doc.doc_barcode == barcode
     assert doc.raw_1c_payload == {"Number": "ПЕР-000123", "Date": "2026-04-20T00:00:00"}

@@ -25,7 +25,7 @@
     <input class="filter-input" type="date" name="date_to" value="{{ filters.date_to }}">
     <select class="filter-select" name="doc_kind">
       <option value="">Все типы</option>
-      {% for kind in ["УПД", "УКД", "Перемещение", "Перемещение товаров"] %}
+      {% for kind in ["УПД", "УКД", "Перемещение", "ПРМ"] %}
       <option value="{{ kind }}" {% if filters.doc_kind == kind %}selected{% endif %}>{{ kind }}</option>
       {% endfor %}
     </select>

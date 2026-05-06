@@ -40,7 +40,7 @@
   print_date          datetime     момент генерации PDF (now())
 
   Примечания:
-  • doc_kind уже человекочитаем: "УПД", "УКД", "Перемещение товаров"
+  • doc_kind уже человекочитаем: "УПД", "УКД", "ПРМ"
   • barcode_svg — SVG Code128 конверта, генерируется сервером (python-barcode),
     передаётся как строка; фильтр | safe обязателен
   • Шаблон — один экземпляр, подписывается и вкладывается в конверт
@@ -268,6 +268,7 @@
   <tbody>
     {% for doc in documents %}
     {% set partner_name = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
+    {% set receiver_name = doc.raw_1c_payload.get('СкладПолучатель', {}).get('Description') if doc.raw_1c_payload else None %}
     <tr>
       <td class="col-num">{{ loop.index }}</td>
       <td class="col-kind">{{ doc.doc_kind }}</td>
@@ -281,7 +282,7 @@
           {% endif %}
         {% else %}—{% endif %}
       </td>
-      <td class="col-partner">{{ partner_name or '—' }}</td>
+      <td class="col-partner">{{ partner_name or receiver_name or '—' }}</td>
     </tr>
     {% endfor %}
   </tbody>
