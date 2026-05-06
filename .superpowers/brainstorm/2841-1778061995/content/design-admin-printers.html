@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1b2848; }
+
+  .title-bar { font-size: 13px; font-weight: 700; color: #888; text-align: center; padding: 10px; background: #e8edf5; border-radius: 6px; margin-bottom: 0; }
+
+  .navbar {
+    background: linear-gradient(105deg, #1b2848 0%, #2874b9 100%);
+    color: #fff;
+    padding: 0 24px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+  .navbar .brand { font-size: 15px; font-weight: 700; }
+  .admin-badge {
+    background: rgba(204,12,0,.75);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .layout { display: flex; height: calc(100vh - 90px); }
+
+  .sidebar {
+    width: 200px;
+    background: #fff;
+    border-right: 1px solid #dde3ef;
+    padding: 16px 0;
+    flex-shrink: 0;
+  }
+  .sidebar-item {
+    padding: 10px 20px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #6b7a99;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sidebar-item.active {
+    background: #e8f1fb;
+    color: #1b5fa0;
+    font-weight: 700;
+    border-left: 3px solid #2874b9;
+  }
+
+  .main { flex: 1; padding: 24px; overflow-y: auto; }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .page-header h1 { font-size: 20px; font-weight: 700; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary { background: linear-gradient(105deg, #1b2848, #2874b9); color: #fff; }
+  .btn-ghost { background: transparent; border: 1.5px solid #dde3ef; color: #1b2848; }
+  .btn-danger { background: #fff0f0; color: #cc0c00; border: 1.5px solid #f5c0bd; }
+
+  .table-wrap {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(27,40,72,.07);
+    overflow: hidden;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: #f5f7fc;
+    padding: 10px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: #6b7a99;
+    font-weight: 700;
+    text-align: left;
+    border-bottom: 1px solid #eef0f7;
+  }
+  td {
+    padding: 12px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid #f0f2f9;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-zpl { background: #fef3e2; color: #9a5c00; }
+  .badge-a4 { background: #e8f1fb; color: #1b5fa0; }
+  .badge-on { background: #e6f9ee; color: #1a7a3a; }
+  .badge-off { background: #f5f5f5; color: #999; }
+
+  .toggle {
+    width: 36px; height: 20px;
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    display: inline-block;
+  }
+  .toggle.on { background: linear-gradient(105deg, #1b2848, #2874b9); }
+  .toggle.off { background: #dde3ef; }
+  .toggle .knob {
+    width: 14px; height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute;
+    top: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: left .15s;
+  }
+  .toggle.on .knob { left: 18px; }
+  .toggle.off .knob { left: 3px; }
+
+  .actions { display: flex; gap: 6px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(27,40,72,.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    background: #fff;
+    border-radius: 14px;
+    width: 400px;
+    box-shadow: 0 8px 40px rgba(27,40,72,.2);
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #eef0f7;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-header h2 { font-size: 15px; font-weight: 700; }
+  .modal-body { padding: 20px; }
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid #eef0f7;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px; }
+  .field input, .field select {
+    width: 100%;
+    border: 1.5px solid #dde3ef;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #1b2848;
+    background: #f8faff;
+  }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="title-bar">Секция 3 — Макет: Admin › Принтеры</div>
+
+<nav class="navbar">
+  <div class="brand">КонвертТрек <span class="admin-badge">Admin</span></div>
+  <div style="color:rgba(255,255,255,.7);font-size:13px;">Иванов И. (admin)</div>
+</nav>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-item">👥 Операторы</div>
+    <div class="sidebar-item">🏢 Филиалы</div>
+    <div class="sidebar-item">✍️ Подписанты</div>
+    <div class="sidebar-item active">🖨 Принтеры</div>
+    <div class="sidebar-item">📋 Аудит-лог</div>
+    <div class="sidebar-item">⚙️ Система</div>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <h1>Принтеры</h1>
+      <button class="btn btn-primary">+ Добавить принтер</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Название</th>
+            <th>Тип</th>
+            <th>Адрес / Share</th>
+            <th>Видимость</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>TLP-300 Склад</strong><br/><span style="color:#9aa0b4;font-size:11px;">tlp300-sklad</span></td>
+            <td><span class="badge badge-zpl">⚡ ZPL</span></td>
+            <td style="font-family:monospace;font-size:12px;">10.60.6.45 : 9100<br/>200 DPI</td>
+            <td><div class="toggle on"><div class="knob"></div></div></td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;">✏️</button>
+                <button class="btn btn-danger" style="padding:5px 10px;font-size:12px;">🗑</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>TLP-300 Офис</strong><br/><span style="color:#9aa0b4;font-size:11px;">tlp300-office</span></td>
+            <td><span class="badge badge-zpl">⚡ ZPL</span></td>
+            <td style="font-family:monospace;font-size:12px;">10.60.6.46 : 9100<br/>300 DPI</td>
+            <td><div class="toggle off"><div class="knob"></div></div></td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;">✏️</button>
+                <button class="btn btn-danger" style="padding:5px 10px;font-size:12px;">🗑</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>HP LaserJet M404dn</strong><br/><span style="color:#9aa0b4;font-size:11px;">hp-lj-main</span></td>
+            <td><span class="badge badge-a4">🖨 А4</span></td>
+            <td style="font-family:monospace;font-size:12px;">\\10.60.6.11\hp-lj-main</td>
+            <td><div class="toggle on"><div class="knob"></div></div></td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;">✏️</button>
+                <button class="btn btn-danger" style="padding:5px 10px;font-size:12px;">🗑</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Kyocera ECOSYS</strong><br/><span style="color:#9aa0b4;font-size:11px;">kyocera-buh</span></td>
+            <td><span class="badge badge-a4">🖨 А4</span></td>
+            <td style="font-family:monospace;font-size:12px;">\\10.60.6.11\kyocera-buh</td>
+            <td><div class="toggle on"><div class="knob"></div></div></td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;">✏️</button>
+                <button class="btn btn-danger" style="padding:5px 10px;font-size:12px;">🗑</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add printer -->
+<div class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Добавить принтер</h2>
+      <span style="color:#9aa0b4;cursor:pointer;font-size:18px;">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field" style="flex:2">
+          <label>Название</label>
+          <input type="text" placeholder="TLP-300 Склад №2"/>
+        </div>
+        <div class="field" style="flex:1">
+          <label>Тип</label>
+          <select>
+            <option>ZPL</option>
+            <option>А4</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>ID (slug)</label>
+        <input type="text" placeholder="tlp300-sklad-2"/>
+      </div>
+      <div class="field-row">
+        <div class="field" style="flex:2">
+          <label>IP-адрес (ZPL) / Share name (А4)</label>
+          <input type="text" placeholder="10.60.6.47 или hp-lj-buh"/>
+        </div>
+        <div class="field" style="flex:1">
+          <label>Порт / DPI</label>
+          <input type="text" placeholder="9100 / 200"/>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost">Отмена</button>
+      <button class="btn btn-primary">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

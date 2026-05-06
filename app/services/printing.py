@@ -11,7 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.branch import Branch
+from app.models.printer import Printer
 from app.models.signer import Signer
+from app.config import get_settings
 from app.services.envelopes import get_by_id
 
 _TEMPLATES = Path(__file__).parent.parent / "web" / "templates"
@@ -148,6 +150,40 @@ async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) ->
     )
     html_str = _jinja_env().get_template("print/inventory.html").render(**ctx)
     return await _html_to_pdf(html_str)
+
+
+def _win32print_send(share_name: str, data: bytes, *, host: str) -> None:
+    import win32print
+
+    path = rf"\\{host}\{share_name}"
+    handle = win32print.OpenPrinter(path)
+    try:
+        win32print.StartDocPrinter(handle, 1, ("konvert-inventory", None, "RAW"))
+        win32print.StartPagePrinter(handle)
+        win32print.WritePrinter(handle, data)
+        win32print.EndPagePrinter(handle)
+        win32print.EndDocPrinter(handle)
+    finally:
+        win32print.ClosePrinter(handle)
+
+
+async def send_inventory_to_a4_printer(
+    session: AsyncSession,
+    envelope_id: uuid.UUID,
+    printer: Printer,
+) -> None:
+    if printer.kind != "a4" or not printer.share_name:
+        from app.exceptions import AppError
+
+        raise AppError("Опись доступна только для A4-принтера", status_code=400, code="printer_not_a4")
+    pdf_bytes = await render_inventory_pdf(session, envelope_id)
+    settings = get_settings()
+    await asyncio.to_thread(
+        _win32print_send,
+        printer.share_name,
+        pdf_bytes,
+        host=settings.print_server_host,
+    )
 
 
 async def render_label_pdf(session: AsyncSession, envelope_id: uuid.UUID) -> bytes:

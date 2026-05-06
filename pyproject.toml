@@ -18,6 +18,7 @@ dependencies = [
     "playwright>=1.50",
     "python-barcode[images]>=0.15",
     "qrcode[pil]>=7.4",
+    "pywin32>=306; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]

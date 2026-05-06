@@ -1,0 +1,40 @@
+<h2>Вопрос 4: Отказ 1С при отметке времени</h2>
+<p class="subtitle">
+  Запросы к <code>InformationRegister_ДополнительныеСведения</code> идут в фоне.
+  Что делаем, если 1С недоступна или вернула ошибку?
+</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Тихий лог — fire-and-forget</h3>
+      <p>
+        Ошибка пишется в <code>logging.warning</code>.
+        Никаких повторов, никакой очереди.
+        Отметка просто не появится в 1С — некритично для работы системы.
+      </p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Запись в audit_log + тихий лог</h3>
+      <p>
+        Ошибка пишется в <code>logging.warning</code> <em>и</em> добавляется
+        событие <code>onec_mark_failed</code> в <code>audit_log</code>
+        с описанием причины. Можно потом найти «несинхронизированные» конверты.
+      </p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Повтор с задержкой (retry)</h3>
+      <p>
+        1 повтор через ~5 сек. Если снова ошибка — вариант А или Б.
+        Покрывает кратковременные сбои, но усложняет код фоновой задачи.
+      </p>
+    </div>
+  </div>
+</div>

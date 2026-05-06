@@ -1,0 +1,19 @@
+<h2>Вопрос 2: Управление принтерами</h2>
+<p class="subtitle">Сейчас принтеры — статичный JSON в .env. Для v1.4 нужна возможность администратору включать/выключать принтеры из UI. Где хранить конфиг принтеров?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Перенести в БД (таблица printers)</h3>
+      <p>Полный CRUD через adminку: добавить, удалить, включить/выключить, задать IP/порт/DPI. .env остаётся только для первоначального сида. Самый гибкий вариант.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Оставить в .env, добавить флаг visible в БД</h3>
+      <p>Конфиг принтеров (IP, порт) по-прежнему в .env. В БД только таблица printer_visibility (id, is_visible). Проще, но для добавления нового принтера нужен рестарт сервиса.</p>
+    </div>
+  </div>
+</div>

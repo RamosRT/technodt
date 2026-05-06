@@ -5,11 +5,17 @@ from urllib.parse import urlparse, urlunparse
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_admin
+from app.auth import require_admin, require_operator
 from app.db import get_session
-from app.schemas.operator import OperatorCreate, OperatorOut, OperatorPatch
+from app.schemas.operator import OperatorCreate, OperatorOut, OperatorPatch, OperatorSettingsPatch
 from app.services import printing
-from app.services.operators import delete_operator, ensure_operator, list_operators, patch_operator
+from app.services.operators import (
+    delete_operator,
+    ensure_operator,
+    list_operators,
+    patch_operator,
+    patch_operator_settings,
+)
 
 router = APIRouter(prefix="/api/operators", tags=["operators"])
 
@@ -57,6 +63,23 @@ async def create_operator(
         bootstrap=body.is_admin,
         password=body.password,
         assigned_zpl_printer_id=body.assigned_zpl_printer_id,
+        assigned_a4_printer_id=body.assigned_a4_printer_id,
+    )
+    await session.commit()
+    return op
+
+
+@router.patch("/me/settings", response_model=OperatorOut)
+async def update_my_settings(
+    body: OperatorSettingsPatch,
+    operator: str = require_operator(),
+    session: AsyncSession = Depends(get_session),
+):
+    values = body.model_dump(exclude_unset=True)
+    op = await patch_operator_settings(
+        session,
+        username=operator,
+        **values,
     )
     await session.commit()
     return op
@@ -76,6 +99,9 @@ async def update_operator(
         is_admin=body.is_admin,
         is_active=body.is_active,
         assigned_zpl_printer_id=body.assigned_zpl_printer_id,
+        assigned_a4_printer_id=body.assigned_a4_printer_id,
+        default_branch_id=body.default_branch_id,
+        default_signer_sender_id=body.default_signer_sender_id,
     )
     await session.commit()
     return op

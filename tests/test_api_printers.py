@@ -1,15 +1,6 @@
-import json
-
 import pytest
 
-from app.config import get_settings
-
-
-@pytest.fixture(autouse=True)
-def clear_settings_cache():
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+from app.models import Printer
 
 
 @pytest.mark.asyncio
@@ -21,41 +12,20 @@ async def test_printer_list_requires_auth(client):
 
 
 @pytest.mark.asyncio
-async def test_printer_list_returns_configured_printers(client, monkeypatch):
-    monkeypatch.setenv(
-        "PRINTERS_JSON",
-        json.dumps(
-            [
-                {
-                    "id": "zpl-main",
-                    "name": "Zebra склад",
-                    "kind": "zpl",
-                    "host": "192.168.1.50",
-                    "port": 9100,
-                    "dpi": 200,
-                }
-            ]
-        ),
+async def test_printer_list_returns_active_db_printers(client, db_session):
+    db_session.add_all(
+        [
+            Printer(id="zpl-main", name="Zebra склад", kind="zpl", host="127.0.0.1", port=9100, dpi=200),
+            Printer(id="old", name="Old", kind="zpl", host="127.0.0.2", port=9100, is_active=False),
+        ]
     )
-    get_settings.cache_clear()
+    await db_session.commit()
     client.cookies.set("operator_name", "Test")
 
     r = await client.get("/api/printers")
 
     assert r.status_code == 200
-    assert r.json()["items"][0]["id"] == "zpl-main"
-
-
-@pytest.mark.asyncio
-async def test_printer_list_rejects_malformed_config(client, monkeypatch):
-    monkeypatch.setenv("PRINTERS_JSON", "{bad")
-    get_settings.cache_clear()
-    client.cookies.set("operator_name", "Test")
-
-    r = await client.get("/api/printers")
-
-    assert r.status_code == 500
-    assert r.json()["code"] == "printer_config_invalid"
+    assert [item["id"] for item in r.json()["items"]] == ["zpl-main"]
 
 
 @pytest.mark.asyncio
@@ -73,23 +43,11 @@ async def test_label_send_unknown_printer_returns_404(client):
 
 
 @pytest.mark.asyncio
-async def test_label_send_calls_zpl_sender(client, monkeypatch):
-    monkeypatch.setenv(
-        "PRINTERS_JSON",
-        json.dumps(
-            [
-                {
-                    "id": "zpl-main",
-                    "name": "Zebra склад",
-                    "kind": "zpl",
-                    "host": "127.0.0.1",
-                    "port": 9100,
-                    "dpi": 200,
-                }
-            ]
-        ),
+async def test_label_send_calls_zpl_sender(client, db_session, monkeypatch):
+    db_session.add(
+        Printer(id="zpl-main", name="Zebra склад", kind="zpl", host="127.0.0.1", port=9100, dpi=200)
     )
-    get_settings.cache_clear()
+    await db_session.commit()
     calls = []
 
     def fake_send(printer, payload):
@@ -111,12 +69,15 @@ async def test_label_send_calls_zpl_sender(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_inventory_send_returns_501(client, monkeypatch):
-    monkeypatch.setenv(
-        "PRINTERS_JSON",
-        json.dumps([{"id": "a4-main", "name": "A4", "kind": "a4"}]),
-    )
-    get_settings.cache_clear()
+async def test_inventory_send_calls_a4_sender(client, db_session, monkeypatch):
+    db_session.add(Printer(id="a4-main", name="A4", kind="a4", share_name="HP-Laser"))
+    await db_session.commit()
+    calls = []
+
+    async def fake_send(session, envelope_id, printer):
+        calls.append((envelope_id, printer.id))
+
+    monkeypatch.setattr("app.services.printing.send_inventory_to_a4_printer", fake_send)
     client.cookies.set("operator_name", "Test")
     created = await client.post("/api/envelopes")
 
@@ -125,5 +86,21 @@ async def test_inventory_send_returns_501(client, monkeypatch):
         params={"printer_id": "a4-main"},
     )
 
-    assert r.status_code == 501
-    assert r.json()["code"] == "inventory_print_not_implemented"
+    assert r.status_code == 204
+    assert calls[0][1] == "a4-main"
+
+
+@pytest.mark.asyncio
+async def test_inventory_send_rejects_zpl_printer(client, db_session):
+    db_session.add(Printer(id="zpl-main", name="ZPL", kind="zpl", host="127.0.0.1", port=9100))
+    await db_session.commit()
+    client.cookies.set("operator_name", "Test")
+    created = await client.post("/api/envelopes")
+
+    r = await client.post(
+        f"/api/envelopes/{created.json()['id']}/print/inventory/send",
+        params={"printer_id": "zpl-main"},
+    )
+
+    assert r.status_code == 400
+    assert r.json()["code"] == "printer_not_a4"

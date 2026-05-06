@@ -1,0 +1,36 @@
+<h2>Вопрос 5: Поддержка Mindeo M40</h2>
+<p class="subtitle">
+  Нужно добавить поддержку Mindeo M40 и «различных разрешений».
+  Что именно сейчас ломается на M40 по сравнению с основным ТСД?
+</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Размер экрана / плотность (dp)</h3>
+      <p>
+        M40 имеет другой DPI или разрешение — кнопки слишком маленькие,
+        текст не влезает, layout обрезается.
+        Нужна адаптивная вёрстка под разные bucket-размеры.
+      </p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Интеграция сканера (не DataWedge)</h3>
+      <p>
+        M40 не использует DataWedge/Intent API — нужен другой механизм
+        получения результата сканирования (keyboard emulation или другой Intent).
+      </p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Оба пункта</h3>
+      <p>И layout-адаптация, и другой механизм сканера.</p>
+    </div>
+  </div>
+</div>

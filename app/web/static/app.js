@@ -377,6 +377,81 @@ function closeModal(id) {
   ensureFocus();
 }
 
+function escapeAttr(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function editBranchFromAdmin(btn) {
+  const id = btn?.dataset?.id;
+  if (!id) return;
+  const name = btn.dataset.name || "";
+  const title = document.getElementById("admin-edit-title");
+  const body = document.getElementById("admin-edit-body");
+  if (!title || !body) return;
+  title.textContent = "Изменить филиал";
+  body.innerHTML = `
+    <form hx-patch="/ui/admin/branches/${id}" hx-target="#main-area" onsubmit="closeModal('admin-edit-modal')">
+      <div class="form-row">
+        <label>Название</label>
+        <input class="form-control" name="name" value="${escapeAttr(name)}" required autofocus>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('admin-edit-modal')">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>`;
+  if (window.htmx) htmx.process(body);
+  openModal("admin-edit-modal");
+}
+
+function editSignerFromAdmin(btn) {
+  const id = btn?.dataset?.id;
+  if (!id) return;
+  const lastName = btn.dataset.lastName || "";
+  const firstName = btn.dataset.firstName || "";
+  const title = document.getElementById("admin-edit-title");
+  const body = document.getElementById("admin-edit-body");
+  if (!title || !body) return;
+  title.textContent = "Изменить подписанта";
+  body.innerHTML = `
+    <form hx-patch="/ui/admin/signers/${id}" hx-target="#main-area" onsubmit="closeModal('admin-edit-modal')">
+      <div class="admin-printer-form-grid">
+        <div class="form-row">
+          <label>Фамилия</label>
+          <input class="form-control" name="last_name" value="${escapeAttr(lastName)}" required autofocus>
+        </div>
+        <div class="form-row">
+          <label>Имя</label>
+          <input class="form-control" name="first_name" value="${escapeAttr(firstName)}" required>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('admin-edit-modal')">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>`;
+  if (window.htmx) htmx.process(body);
+  openModal("admin-edit-modal");
+}
+
+window.editBranchFromAdmin = editBranchFromAdmin;
+window.editSignerFromAdmin = editSignerFromAdmin;
+
+document.addEventListener("click", (e) => {
+  const trigger = e.target?.closest?.("[data-admin-edit]");
+  if (!trigger) return;
+  e.preventDefault();
+  if (trigger.dataset.adminEdit === "branch") {
+    editBranchFromAdmin(trigger);
+  } else if (trigger.dataset.adminEdit === "signer") {
+    editSignerFromAdmin(trigger);
+  }
+});
+
 // ─── Manual barcode input ───────────────────────────────────────
 function submitManualBarcode(formId) {
   const form = document.getElementById(formId);

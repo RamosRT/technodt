@@ -94,6 +94,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
@@ -186,12 +187,15 @@ class MainActivity : ComponentActivity() {
             KonvertTrackTheme {
                 AppRoot(
                     savedServerUrl = prefs.getString("server_url", "") ?: "",
-                    onSaveLogin = { serverUrl, operator, assignedPrinterId ->
+                    onSaveLogin = { serverUrl, operator, assignedZplPrinterId, assignedA4PrinterId ->
                         prefs.edit {
                             putString("server_url", serverUrl)
                             putString("operator", operator)
-                            if (!assignedPrinterId.isNullOrBlank()) {
-                                putString("printer_id", assignedPrinterId)
+                            if (!assignedZplPrinterId.isNullOrBlank()) {
+                                putString("printer_id", assignedZplPrinterId)
+                            }
+                            if (!assignedA4PrinterId.isNullOrBlank()) {
+                                putString("a4_printer_id", assignedA4PrinterId)
                             }
                         }
                     },
@@ -227,6 +231,7 @@ class MainActivity : ComponentActivity() {
 
     private fun Intent.extractBarcode(): String? {
         val preferredKeys = listOf(
+            "scandata",
             "barcodeStr",
             "barcode_string",
             "barcode",
@@ -250,7 +255,8 @@ class MainActivity : ComponentActivity() {
         const val TAG = "KonvertTrack"
         const val UROVO_SCAN_ACTION = "urovo.rcv.message"
         const val UROVO_DECODE_ACTION = "android.intent.ACTION_DECODE_DATA"
-        val SCAN_ACTIONS = setOf(UROVO_SCAN_ACTION, UROVO_DECODE_ACTION)
+        const val MINDEO_SCAN_ACTION = "com.android.scanner.broadcast"
+        val SCAN_ACTIONS = setOf(UROVO_SCAN_ACTION, UROVO_DECODE_ACTION, MINDEO_SCAN_ACTION)
     }
 }
 
@@ -279,9 +285,15 @@ private fun String.toDisplayDate(): String {
 }
 
 @Composable
+private fun isCompactTsd(): Boolean {
+    val configuration = LocalConfiguration.current
+    return configuration.screenHeightDp <= 640 || configuration.screenWidthDp <= 360
+}
+
+@Composable
 private fun AppRoot(
     savedServerUrl: String,
-    onSaveLogin: (String, String, String?) -> Unit,
+    onSaveLogin: (String, String, String?, String?) -> Unit,
     onClearLogin: () -> Unit,
     loadPreference: (String) -> String,
     savePreference: (String, String) -> Unit,
@@ -304,6 +316,8 @@ private fun AppRoot(
     var signerId by rememberSaveable { mutableStateOf(loadPreference("signer_id")) }
     var printer by rememberSaveable { mutableStateOf(loadPreference("printer")) }
     var printerId by rememberSaveable { mutableStateOf(loadPreference("printer_id")) }
+    var a4Printer by rememberSaveable { mutableStateOf(loadPreference("a4_printer")) }
+    var a4PrinterId by rememberSaveable { mutableStateOf(loadPreference("a4_printer_id")) }
     var currentEnvelope by remember { mutableStateOf<EnvelopeDto?>(null) }
     var verifyEnvelope by remember { mutableStateOf<EnvelopeDto?>(null) }
     var registerMessage by remember { mutableStateOf<String?>(null) }
@@ -642,12 +656,16 @@ private fun AppRoot(
             savedServerUrl = savedServerUrl,
             bindServiceMenu = bindServiceMenu,
             bindBarcode = bindBarcode,
-            onLoginSuccess = { serverUrl, name, assignedPrinterId ->
-                onSaveLogin(serverUrl, name, assignedPrinterId)
+            onLoginSuccess = { serverUrl, name, assignedPrinterId, assignedA4PrinterId ->
+                onSaveLogin(serverUrl, name, assignedPrinterId, assignedA4PrinterId)
                 currentServerUrl = serverUrl
                 if (!assignedPrinterId.isNullOrBlank()) {
                     printerId = assignedPrinterId
                     savePreference("printer_id", assignedPrinterId)
+                }
+                if (!assignedA4PrinterId.isNullOrBlank()) {
+                    a4PrinterId = assignedA4PrinterId
+                    savePreference("a4_printer_id", assignedA4PrinterId)
                 }
                 operator = name
                 online = true
@@ -665,8 +683,10 @@ private fun AppRoot(
             signerId = signerId,
             printer = printer,
             printerId = printerId,
+            a4Printer = a4Printer,
+            a4PrinterId = a4PrinterId,
             onBack = { screen = "home" },
-            onSaveSettings = { server, selectedBranchId, newBranch, selectedSignerId, newSigner, selectedPrinterId, newPrinter ->
+            onSaveSettings = { server, selectedBranchId, newBranch, selectedSignerId, newSigner, selectedPrinterId, newPrinter, selectedA4PrinterId, newA4Printer ->
                 currentServerUrl = server
                 branchId = selectedBranchId
                 branch = newBranch
@@ -674,6 +694,8 @@ private fun AppRoot(
                 signer = newSigner
                 printerId = selectedPrinterId
                 printer = newPrinter
+                a4PrinterId = selectedA4PrinterId
+                a4Printer = newA4Printer
                 savePreference("server_url", server)
                 savePreference("branch_id", selectedBranchId)
                 savePreference("branch", newBranch)
@@ -681,6 +703,8 @@ private fun AppRoot(
                 savePreference("signer", newSigner)
                 savePreference("printer_id", selectedPrinterId)
                 savePreference("printer", newPrinter)
+                savePreference("a4_printer_id", selectedA4PrinterId)
+                savePreference("a4_printer", newA4Printer)
                 screen = "home"
             },
             onLogout = {
@@ -699,6 +723,7 @@ private fun AppRoot(
             branchId = branchId,
             signerId = signerId,
             printerId = printerId,
+            a4PrinterId = a4PrinterId,
             onEnvelopeChanged = { envelope -> currentEnvelope = envelope },
             bindSealEnvelope = bindSealEnvelope,
             onBack = {
@@ -809,7 +834,7 @@ private fun LoginScreen(
     savedServerUrl: String,
     bindServiceMenu: ((() -> Unit)?) -> Unit,
     bindBarcode: (((String) -> Unit)?) -> Unit,
-    onLoginSuccess: (String, String, String?) -> Unit,
+    onLoginSuccess: (String, String, String?, String?) -> Unit,
 ) {
     var serverUrl by rememberSaveable { mutableStateOf(savedServerUrl) }
     var username by rememberSaveable { mutableStateOf("") }
@@ -829,7 +854,12 @@ private fun LoginScreen(
                 ApiClient.authApi(nextServerUrl).login(LoginRequest(nextUsername.trim(), nextPassword))
             }.onSuccess { response ->
                 if (response.ok) {
-                    onLoginSuccess(nextServerUrl.trim(), response.operator, response.assigned_zpl_printer_id)
+                    onLoginSuccess(
+                        nextServerUrl.trim(),
+                        response.operator,
+                        response.assigned_zpl_printer_id,
+                        response.assigned_a4_printer_id,
+                    )
                 } else {
                     errorText = "Вход не выполнен"
                 }
@@ -1518,6 +1548,7 @@ private fun RegisterScreen(
     branchId: String,
     signerId: String,
     printerId: String,
+    a4PrinterId: String,
     onEnvelopeChanged: (EnvelopeDto) -> Unit,
     bindSealEnvelope: ((() -> Unit)?) -> Unit,
     onBack: () -> Unit,
@@ -1595,7 +1626,7 @@ private fun RegisterScreen(
                     envelope = envelope,
                     printMessage = printMessage,
                     printError = printError,
-                    onPrint = {
+                    onPrintLabel = {
                         if (printerId.isBlank()) {
                             printError = "Выберите ZPL-принтер в сервисном меню"
                         } else {
@@ -1606,6 +1637,23 @@ private fun RegisterScreen(
                                     ApiClient.envelopeApi(serverUrl).printLabel(envelope.id, printerId)
                                 }.onSuccess {
                                     printMessage = "Этикетка отправлена на принтер"
+                                }.onFailure { err ->
+                                    printError = apiErrorText(err)
+                                }
+                            }
+                        }
+                    },
+                    onPrintInventory = {
+                        if (a4PrinterId.isBlank()) {
+                            printError = "Выберите A4-принтер в сервисном меню"
+                        } else {
+                            scope.launch {
+                                printMessage = null
+                                printError = null
+                                runCatching {
+                                    ApiClient.envelopeApi(serverUrl).printInventory(envelope.id, a4PrinterId)
+                                }.onSuccess {
+                                    printMessage = "Опись отправлена на принтер"
                                 }.onFailure { err ->
                                     printError = apiErrorText(err)
                                 }
@@ -1729,15 +1777,16 @@ private fun RegisterScreen(
 
 @Composable
 private fun RegisterTopBar(onBack: () -> Unit, title: String, subtitle: String? = null) {
+    val compact = isCompactTsd()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(if (compact) 48.dp else 56.dp)
             .background(GradBlue)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onBack, modifier = Modifier.size(if (compact) 40.dp else 44.dp)) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_left),
                 contentDescription = "Назад",
@@ -1748,7 +1797,7 @@ private fun RegisterTopBar(onBack: () -> Unit, title: String, subtitle: String? 
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
             )
             if (subtitle != null) {
                 Text(
@@ -1766,31 +1815,35 @@ private fun SealedEnvelopeScreen(
     envelope: EnvelopeDto,
     printMessage: String?,
     printError: String?,
-    onPrint: () -> Unit,
+    onPrintLabel: () -> Unit,
+    onPrintInventory: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val compact = isCompactTsd()
     Column(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(if (compact) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
         ) {
             if (printMessage != null) ScanFeedbackBanner(printMessage, isError = false)
             if (printError != null) ScanFeedbackBanner(printError, isError = true)
             SectionLabel("Печать")
-            Button(
-                onClick = onPrint,
-                modifier = Modifier.fillMaxWidth().height(44.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceTint),
-                elevation = ButtonDefaults.buttonElevation(0.dp),
-                border = BorderStroke(1.dp, Color(0xFFC9DEF0)),
-            ) {
-                Text("Этикетка ZPL", style = MaterialTheme.typography.bodyMedium, color = BrandBlue)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                PrintActionButton(
+                    text = "Этикетка ZPL",
+                    onClick = onPrintLabel,
+                    modifier = Modifier.weight(1f),
+                )
+                PrintActionButton(
+                    text = "Опись A4",
+                    onClick = onPrintInventory,
+                    modifier = Modifier.weight(1f),
+                )
             }
             SectionLabel("Состав конверта")
             Column(
@@ -1820,18 +1873,51 @@ private fun SealedEnvelopeScreen(
 }
 
 @Composable
+private fun PrintActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(if (isCompactTsd()) 40.dp else 44.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = SurfaceTint),
+        elevation = ButtonDefaults.buttonElevation(0.dp),
+        border = BorderStroke(1.dp, Color(0xFFC9DEF0)),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_printer),
+            contentDescription = null,
+            tint = BrandBlue,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = BrandBlue,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun EnvelopeHero(
     envelope: EnvelopeDto,
     branchName: String,
     signerName: String,
 ) {
+    val compact = isCompactTsd()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradBlue)
-            .padding(16.dp),
+            .padding(if (compact) 10.dp else 16.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1847,11 +1933,11 @@ private fun EnvelopeHero(
             Text(
                 envelope.number,
                 color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.titleLarge,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 16.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Column {
@@ -1886,18 +1972,23 @@ private fun VerifyEnvelopeHero(
     branchName: String,
     signerName: String,
 ) {
+    val compact = isCompactTsd()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(GradBlue)
-            .padding(16.dp),
+            .padding(if (compact) 10.dp else 16.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusPill(status = status, onDark = true)
                 Spacer(modifier = Modifier.weight(1f))
             }
-            Text(envelopeNumber, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
+            Text(
+                envelopeNumber,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -2032,8 +2123,10 @@ private fun ServiceScreen(
     signerId: String,
     printer: String,
     printerId: String,
+    a4Printer: String,
+    a4PrinterId: String,
     onBack: () -> Unit,
-    onSaveSettings: (String, String, String, String, String, String, String) -> Unit,
+    onSaveSettings: (String, String, String, String, String, String, String, String, String) -> Unit,
     onLogout: () -> Unit,
 ) {
     var editableServerUrl by rememberSaveable(serverUrl) { mutableStateOf(serverUrl) }
@@ -2043,14 +2136,18 @@ private fun ServiceScreen(
     var editableSignerId by rememberSaveable(signerId) { mutableStateOf(signerId) }
     var editablePrinter by rememberSaveable(printer) { mutableStateOf(printer) }
     var editablePrinterId by rememberSaveable(printerId) { mutableStateOf(printerId) }
+    var editableA4Printer by rememberSaveable(a4Printer) { mutableStateOf(a4Printer) }
+    var editableA4PrinterId by rememberSaveable(a4PrinterId) { mutableStateOf(a4PrinterId) }
     var branches by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
     var signers by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
     var printers by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
+    var a4Printers by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
     var listError by remember { mutableStateOf<String?>(null) }
     var listsLoading by remember { mutableStateOf(false) }
     var showBranchSheet by remember { mutableStateOf(false) }
     var showSignerSheet by remember { mutableStateOf(false) }
     var showPrinterSheet by remember { mutableStateOf(false) }
+    var showA4PrinterSheet by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var tempServerUrl by remember { mutableStateOf(editableServerUrl) }
@@ -2062,12 +2159,19 @@ private fun ServiceScreen(
             val api = ApiClient.settingsApi(serverUrl)
             val branchItems = api.branches().map { SelectOption(it.id, it.name) }
             val signerItems = api.signers().map { SelectOption(it.id, "${it.last_name} ${it.first_name}") }
-            val printerItems = api.printers().items.filter { it.kind == "zpl" }.map { SelectOption(it.id, it.displayName()) }
-            Triple(branchItems, signerItems, printerItems)
-        }.onSuccess { (branchItems, signerItems, printerItems) ->
+            val printerItems = api.printers().items
+            val zplPrinterItems = printerItems.filter { it.kind == "zpl" }.map { SelectOption(it.id, it.displayName()) }
+            val a4PrinterItems = printerItems.filter { it.kind == "a4" }.map { SelectOption(it.id, it.displayName()) }
+            ListsPayload(branchItems, signerItems, zplPrinterItems, a4PrinterItems)
+        }.onSuccess { payload ->
+            val branchItems = payload.branches
+            val signerItems = payload.signers
+            val printerItems = payload.zplPrinters
+            val a4PrinterItems = payload.a4Printers
             branches = branchItems
             signers = signerItems
             printers = printerItems
+            a4Printers = a4PrinterItems
         }.onFailure {
             listError = "Не удалось загрузить списки"
         }
@@ -2133,6 +2237,13 @@ private fun ServiceScreen(
                         value = editablePrinter.ifBlank { "Не выбран" },
                         onClick = { showPrinterSheet = true },
                     )
+                    ServiceDivider()
+                    ServiceRow(
+                        icon = R.drawable.ic_printer,
+                        title = "A4-принтер",
+                        value = editableA4Printer.ifBlank { "Не выбран" },
+                        onClick = { showA4PrinterSheet = true },
+                    )
                 }
                 ServiceSection("Об устройстве") {
                     ServiceRow(
@@ -2167,6 +2278,8 @@ private fun ServiceScreen(
                             editableSigner.trim(),
                             editablePrinterId,
                             editablePrinter.trim(),
+                            editableA4PrinterId,
+                            editableA4Printer.trim(),
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -2220,6 +2333,19 @@ private fun ServiceScreen(
             onDismiss = { showPrinterSheet = false },
         )
     }
+    if (showA4PrinterSheet) {
+        SelectionSheet(
+            title = "A4-принтер",
+            options = a4Printers,
+            selectedId = editableA4PrinterId,
+            onSelect = { selected ->
+                editableA4PrinterId = selected.id
+                editableA4Printer = selected.label
+                showA4PrinterSheet = false
+            },
+            onDismiss = { showA4PrinterSheet = false },
+        )
+    }
     if (showServerDialog) {
         AlertDialog(
             onDismissRequest = { showServerDialog = false },
@@ -2270,22 +2396,34 @@ data class SelectOption(
     val label: String,
 )
 
+private data class ListsPayload(
+    val branches: List<SelectOption>,
+    val signers: List<SelectOption>,
+    val zplPrinters: List<SelectOption>,
+    val a4Printers: List<SelectOption>,
+)
+
 private fun PrinterDto.displayName(): String {
-    val address = if (!host.isNullOrBlank() && port != null) " · $host:$port" else ""
+    val address = when {
+        !share_name.isNullOrBlank() -> " · $share_name"
+        !host.isNullOrBlank() && port != null -> " · $host:$port"
+        else -> ""
+    }
     return "$name$address"
 }
 
 @Composable
 private fun ServiceTopBar(onBack: () -> Unit) {
+    val compact = isCompactTsd()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(if (compact) 48.dp else 56.dp)
             .background(GradBlue)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onBack, modifier = Modifier.size(if (compact) 40.dp else 44.dp)) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_left),
                 contentDescription = "Назад",
@@ -2295,7 +2433,7 @@ private fun ServiceTopBar(onBack: () -> Unit) {
         Text(
             text = "Сервисное меню",
             color = MaterialTheme.colorScheme.onPrimary,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
         )
     }
 }
@@ -2998,6 +3136,7 @@ private fun DocRow(
     date: String,
     scanned: Boolean? = null,
 ) {
+    val compact = isCompactTsd()
     val bg = when (scanned) {
         true -> SuccessBg
         false -> Color(0xFFFCE8E8)
@@ -3007,9 +3146,9 @@ private fun DocRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(bg)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 7.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
     ) {
         Text(
             "$index",
@@ -3028,7 +3167,7 @@ private fun DocRow(
                 painter = painterResource(R.drawable.ic_package_plus),
                 contentDescription = null,
                 tint = BrandBlue,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier.size(if (compact) 12.dp else 13.dp),
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -3043,8 +3182,10 @@ private fun DocRow(
                 }
                 Text(
                     "№$number",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium,
                     color = if (scanned == false) FgMuted else BrandInk,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(date, style = MaterialTheme.typography.labelSmall, color = FgMuted)
@@ -3094,6 +3235,7 @@ private fun ScanFeedbackBanner(message: String?, isError: Boolean) {
 
 @Composable
 private fun BottomBar(content: @Composable () -> Unit) {
+    val compact = isCompactTsd()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -3101,7 +3243,7 @@ private fun BottomBar(content: @Composable () -> Unit) {
             .drawBehind {
                 drawLine(Color(0xFFDDE4EF), start = Offset(0f, 0f), end = Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         content()

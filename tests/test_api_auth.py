@@ -10,7 +10,12 @@ async def test_login_sets_cookie(client, db_session):
     r = await client.post("/api/auth/login", json={"username": "Иванов", "password": "1234"})
 
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "operator": "Иванов", "assigned_zpl_printer_id": None}
+    assert r.json() == {
+        "ok": True,
+        "operator": "Иванов",
+        "assigned_zpl_printer_id": None,
+        "assigned_a4_printer_id": None,
+    }
     assert "operator_name" in client.cookies
 
 

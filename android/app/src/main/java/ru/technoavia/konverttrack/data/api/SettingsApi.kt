@@ -22,6 +22,7 @@ data class PrinterDto(
     val host: String?,
     val port: Int?,
     val dpi: Int?,
+    val share_name: String?,
 )
 
 data class PrinterListResponse(

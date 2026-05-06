@@ -10,6 +10,7 @@ class LoginResponse(BaseModel):
     ok: bool
     operator: str
     assigned_zpl_printer_id: str | None = None
+    assigned_a4_printer_id: str | None = None
 
 
 class MeResponse(BaseModel):

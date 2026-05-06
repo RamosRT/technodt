@@ -60,7 +60,12 @@ async def login(
         httponly=True,
         samesite="lax",
     )
-    return LoginResponse(ok=True, operator=name, assigned_zpl_printer_id=op.assigned_zpl_printer_id)
+    return LoginResponse(
+        ok=True,
+        operator=name,
+        assigned_zpl_printer_id=op.assigned_zpl_printer_id,
+        assigned_a4_printer_id=op.assigned_a4_printer_id,
+    )
 
 
 @router.get("/me", response_model=MeResponse)

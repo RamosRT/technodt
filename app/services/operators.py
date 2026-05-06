@@ -12,6 +12,7 @@ from app.models import Operator
 
 _HASH_PREFIX = "pbkdf2_sha256"
 _HASH_ITERATIONS = 210_000
+_MISSING = object()
 
 
 def hash_password(password: str) -> str:
@@ -49,6 +50,7 @@ async def ensure_operator(
     bootstrap: bool = False,
     password: str | None = None,
     assigned_zpl_printer_id: str | None = None,
+    assigned_a4_printer_id: str | None = None,
 ) -> Operator:
     username = username.strip()
     op = (
@@ -61,7 +63,14 @@ async def ensure_operator(
             op.password_hash = hash_password(password)
         if assigned_zpl_printer_id is not None:
             op.assigned_zpl_printer_id = assigned_zpl_printer_id or None
-        if bootstrap or password is not None or assigned_zpl_printer_id is not None:
+        if assigned_a4_printer_id is not None:
+            op.assigned_a4_printer_id = assigned_a4_printer_id or None
+        if (
+            bootstrap
+            or password is not None
+            or assigned_zpl_printer_id is not None
+            or assigned_a4_printer_id is not None
+        ):
             await session.flush()
         return op
 
@@ -70,6 +79,7 @@ async def ensure_operator(
         is_admin=bootstrap,
         password_hash=hash_password(password) if password is not None else None,
         assigned_zpl_printer_id=assigned_zpl_printer_id or None,
+        assigned_a4_printer_id=assigned_a4_printer_id or None,
     )
     session.add(op)
     try:
@@ -98,6 +108,9 @@ async def patch_operator(
     is_active: bool | None,
     password: str | None = None,
     assigned_zpl_printer_id: str | None = None,
+    assigned_a4_printer_id: str | None = None,
+    default_branch_id: uuid.UUID | None = None,
+    default_signer_sender_id: uuid.UUID | None = None,
 ) -> Operator:
     op = (
         await session.execute(select(Operator).where(Operator.id == operator_id))
@@ -110,6 +123,36 @@ async def patch_operator(
         op.password_hash = hash_password(password)
     if assigned_zpl_printer_id is not None:
         op.assigned_zpl_printer_id = assigned_zpl_printer_id or None
+    if assigned_a4_printer_id is not None:
+        op.assigned_a4_printer_id = assigned_a4_printer_id or None
+    if default_branch_id is not None:
+        op.default_branch_id = default_branch_id
+    if default_signer_sender_id is not None:
+        op.default_signer_sender_id = default_signer_sender_id
+    await session.flush()
+    return op
+
+
+async def patch_operator_settings(
+    session: AsyncSession,
+    *,
+    username: str,
+    zpl_printer_id: str | None | object = _MISSING,
+    a4_printer_id: str | None | object = _MISSING,
+    default_branch_id: uuid.UUID | None | object = _MISSING,
+    default_signer_sender_id: uuid.UUID | None | object = _MISSING,
+) -> Operator:
+    op = (
+        await session.execute(select(Operator).where(Operator.username == username.strip()))
+    ).scalar_one()
+    if zpl_printer_id is not _MISSING:
+        op.assigned_zpl_printer_id = str(zpl_printer_id).strip() if zpl_printer_id else None
+    if a4_printer_id is not _MISSING:
+        op.assigned_a4_printer_id = str(a4_printer_id).strip() if a4_printer_id else None
+    if default_branch_id is not _MISSING:
+        op.default_branch_id = default_branch_id
+    if default_signer_sender_id is not _MISSING:
+        op.default_signer_sender_id = default_signer_sender_id
     await session.flush()
     return op
 

@@ -14,16 +14,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.services.dictionaries as dict_svc
 import app.services.envelopes as env_svc
 import app.services.printers as printer_svc
+import app.services.system_settings as settings_svc
 import app.services.verify as verify_svc
 from app.auth import get_is_admin
 from app.config import get_settings
-from app.db import get_session
+from app.db import get_session, get_session_factory
 from app.deps import get_one_c_client
 from app.exceptions import AppError
-from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Operator, Signer
+from app.models import (
+    AuditLog,
+    Branch,
+    Envelope,
+    EnvelopeDocument,
+    EnvelopeStatus,
+    OneCMarkLog,
+    Operator,
+    Signer,
+)
 from app.parsing import optional_query_date
+from app.schemas.printer import PrinterCreate, PrinterPatch
 from app.services import documents as doc_svc
 from app.services import operators as op_svc
+from app.services.onec_marks import fire_seal_marks, fire_verify_marks
 from app.services.odata import OneCClient
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
@@ -157,6 +169,58 @@ async def _audit_screen_context(
             "event": event or "",
             "actor": actor or "",
             "envelope": envelope or "",
+        },
+    }
+
+
+async def _onec_marks_context(session: AsyncSession) -> dict:
+    rows = list(
+        (
+            await session.execute(
+                select(OneCMarkLog, Envelope.number, Envelope.barcode)
+                .outerjoin(Envelope, OneCMarkLog.envelope_id == Envelope.id)
+                .order_by(OneCMarkLog.attempted_at.desc(), OneCMarkLog.id.desc())
+                .limit(80)
+            )
+        ).all()
+    )
+    success_total = (
+        await session.execute(
+            select(func.count()).select_from(OneCMarkLog).where(OneCMarkLog.status == "success")
+        )
+    ).scalar_one()
+    failed_total = (
+        await session.execute(
+            select(func.count()).select_from(OneCMarkLog).where(OneCMarkLog.status == "failed")
+        )
+    ).scalar_one()
+    recent_failed = (
+        await session.execute(
+            select(func.count())
+            .select_from(OneCMarkLog)
+            .where(
+                OneCMarkLog.status == "failed",
+                OneCMarkLog.attempted_at >= datetime.combine(
+                    datetime.now(timezone.utc).date(), time.min, tzinfo=timezone.utc
+                ),
+            )
+        )
+    ).scalar_one()
+    mark_rows = [
+        {
+            "log": log_row,
+            "envelope_number": envelope_number,
+            "envelope_barcode": envelope_barcode,
+        }
+        for log_row, envelope_number, envelope_barcode in rows
+    ]
+    return {
+        "onec_mark_rows": mark_rows,
+        "onec_mark_stats": {
+            "success_total": success_total,
+            "failed_total": failed_total,
+            "recent_failed": recent_failed,
+            "total": success_total + failed_total,
         },
     }
 
@@ -568,6 +632,7 @@ async def ui_seal_envelope(
     destination_branch_id: uuid.UUID | None = Form(default=None),
     notes: str | None = Form(default=None),
     session: AsyncSession = Depends(get_session),
+    one_c: OneCClient = Depends(get_one_c_client),
     operator: str | None = Depends(_operator),
     is_admin: bool = Depends(get_is_admin),
 ):
@@ -586,7 +651,17 @@ async def ui_seal_envelope(
             operator=operator,
         )
         await session.commit()
+        enable_marks = await settings_svc.is_1c_timestamps_enabled(session)
         envelope = await env_svc.get_by_id(session, envelope_id)
+        if envelope.sealed_at is not None:
+            fire_seal_marks(
+                one_c,
+                envelope.id,
+                list(envelope.documents),
+                envelope.sealed_at,
+                get_session_factory(),
+                enabled=enable_marks,
+            )
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
@@ -761,6 +836,7 @@ async def ui_verify_finish(
     envelope_id: uuid.UUID,
     force: str = Form(default="false"),
     session: AsyncSession = Depends(get_session),
+    one_c: OneCClient = Depends(get_one_c_client),
     operator: str | None = Depends(_operator),
 ):
     if not operator:
@@ -768,11 +844,22 @@ async def ui_verify_finish(
 
     try:
         envelope = await env_svc.get_by_id(session, envelope_id)
+        docs = list(envelope.documents)
         result = await verify_svc.finish(
             session, envelope=envelope, force=(force == "true"), operator=operator
         )
         await session.commit()
+        enable_marks = await settings_svc.is_1c_timestamps_enabled(session)
         envelope = await env_svc.get_by_id(session, envelope_id)
+        if envelope.verified_at is not None:
+            fire_verify_marks(
+                one_c,
+                envelope.id,
+                docs,
+                envelope.verified_at,
+                get_session_factory(),
+                enabled=enable_marks,
+            )
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
@@ -797,9 +884,12 @@ async def _admin_ctx(session: AsyncSession, *, is_admin: bool = False) -> dict:
 async def ui_dictionaries(
     request: Request,
     session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
     is_admin: bool = Depends(get_is_admin),
 ):
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="branches")
 
 
 @router.get("/ui/admin", response_class=HTMLResponse)
@@ -812,8 +902,12 @@ async def ui_admin(
     if not is_admin:
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     operators = await op_svc.list_operators(session)
-    printers = printer_svc.list_printers(get_settings())
+    printers = await printer_svc.list_printers(session, active_only=False)
     audit_ctx = await _audit_screen_context(session)
+    onec_marks_ctx = await _onec_marks_context(session)
+    branches = await dict_svc.list_branches(session, only_active=True)
+    signers = await dict_svc.list_signers(session, only_active=True)
+    enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -822,8 +916,13 @@ async def ui_admin(
             "is_admin": is_admin,
             "operators": operators,
             "printers": printers,
+            "branches": branches,
+            "signers": signers,
+            "enable_1c_timestamps": enable_1c_timestamps,
             "show_reset": get_settings().env != "production",
+            "active_admin_tab": "printers",
             **audit_ctx,
+            **onec_marks_ctx,
         },
     )
 
@@ -834,10 +933,15 @@ async def _admin_v2_response(
     *,
     operator: str | None,
     is_admin: bool,
+    active_tab: str = "printers",
 ):
     operators = await op_svc.list_operators(session)
-    printers = printer_svc.list_printers(get_settings())
+    printers = await printer_svc.list_printers(session, active_only=False)
     audit_ctx = await _audit_screen_context(session)
+    onec_marks_ctx = await _onec_marks_context(session)
+    branches = await dict_svc.list_branches(session, only_active=True)
+    signers = await dict_svc.list_signers(session, only_active=True)
+    enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -846,8 +950,13 @@ async def _admin_v2_response(
             "is_admin": is_admin,
             "operators": operators,
             "printers": printers,
+            "branches": branches,
+            "signers": signers,
+            "enable_1c_timestamps": enable_1c_timestamps,
             "show_reset": get_settings().env != "production",
+            "active_admin_tab": active_tab,
             **audit_ctx,
+            **onec_marks_ctx,
         },
     )
 
@@ -887,6 +996,7 @@ async def ui_create_operator(
     username: str = Form(...),
     password: str = Form(...),
     assigned_zpl_printer_id: str = Form(default=""),
+    assigned_a4_printer_id: str = Form(default=""),
     is_admin_form: str = Form(default="", alias="is_admin"),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
@@ -905,6 +1015,7 @@ async def ui_create_operator(
         bootstrap=(is_admin_form == "true"),
         password=password,
         assigned_zpl_printer_id=assigned_zpl_printer_id or None,
+        assigned_a4_printer_id=assigned_a4_printer_id or None,
     )
     await session.commit()
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
@@ -918,6 +1029,7 @@ async def ui_patch_operator(
     is_active: str = Form(default=""),
     password: str = Form(default=""),
     assigned_zpl_printer_id: str = Form(default=""),
+    assigned_a4_printer_id: str = Form(default=""),
     delete_form: str = Form(default="", alias="delete"),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
@@ -961,9 +1073,137 @@ async def ui_patch_operator(
         is_active=True if is_active == "true" else (False if is_active == "false" else None),
         password=password if password else None,
         assigned_zpl_printer_id=assigned_zpl_printer_id if assigned_zpl_printer_id else None,
+        assigned_a4_printer_id=assigned_a4_printer_id if assigned_a4_printer_id else None,
     )
     await session.commit()
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.get("/ui/settings-drawer", response_class=HTMLResponse)
+async def ui_settings_drawer(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>', status_code=401)
+    op = (await session.execute(select(Operator).where(Operator.username == operator))).scalar_one_or_none()
+    printers = await printer_svc.list_printers(session, active_only=True)
+    return templates.TemplateResponse(
+        request,
+        "partials/settings_drawer.html",
+        {
+            "operator": operator,
+            "operator_row": op,
+            "is_admin": is_admin,
+            "branches": await dict_svc.list_branches(session, only_active=True),
+            "signers": await dict_svc.list_signers(session, only_active=True),
+            "printers": printers,
+            "enable_1c_timestamps": await settings_svc.is_1c_timestamps_enabled(session),
+        },
+    )
+
+
+@router.patch("/ui/settings", response_class=HTMLResponse)
+async def ui_patch_settings(
+    request: Request,
+    assigned_zpl_printer_id: str = Form(default=""),
+    assigned_a4_printer_id: str = Form(default=""),
+    default_branch_id: str = Form(default=""),
+    default_signer_sender_id: str = Form(default=""),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>', status_code=401)
+    await op_svc.patch_operator_settings(
+        session,
+        username=operator,
+        zpl_printer_id=assigned_zpl_printer_id or None,
+        a4_printer_id=assigned_a4_printer_id or None,
+        default_branch_id=_optional_uuid(default_branch_id),
+        default_signer_sender_id=_optional_uuid(default_signer_sender_id),
+    )
+    await session.commit()
+    return await ui_settings_drawer(request, session=session, operator=operator, is_admin=is_admin)
+
+
+@router.post("/ui/admin/printers", response_class=HTMLResponse)
+async def ui_admin_create_printer(
+    request: Request,
+    id: str = Form(...),
+    name: str = Form(...),
+    kind: str = Form(...),
+    host: str = Form(default=""),
+    port: str = Form(default=""),
+    dpi: str = Form(default=""),
+    share_name: str = Form(default=""),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    data = PrinterCreate(
+        id=id.strip(),
+        name=name.strip(),
+        kind=kind,  # type: ignore[arg-type]
+        host=host.strip() or None,
+        port=int(port) if port.strip().isdigit() else None,
+        dpi=int(dpi) if dpi.strip().isdigit() else None,
+        share_name=share_name.strip() or (host.strip() if kind == "a4" else None),
+    )
+    await printer_svc.create_printer(session, data)
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.patch("/ui/admin/printers/{printer_id}/toggle", response_class=HTMLResponse)
+async def ui_admin_toggle_printer(
+    request: Request,
+    printer_id: str,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    printer = await printer_svc.get_printer(session, printer_id)
+    await printer_svc.patch_printer(session, printer_id, PrinterPatch(is_active=not printer.is_active))
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.post("/ui/admin/printers/{printer_id}/delete", response_class=HTMLResponse)
+async def ui_admin_delete_printer(
+    request: Request,
+    printer_id: str,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    await printer_svc.delete_printer(session, printer_id)
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
+@router.patch("/ui/admin/settings/1c-timestamps", response_class=HTMLResponse)
+async def ui_admin_toggle_1c_timestamps(
+    request: Request,
+    enabled: str = Form(default="false"),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    await settings_svc.set_1c_timestamps_enabled(session, _is_truthy(enabled))
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="system")
 
 
 @router.delete("/ui/operators/{operator_id}", response_class=HTMLResponse)
@@ -1028,7 +1268,7 @@ async def ui_admin_reset(
         return HTMLResponse('<div class="alert alert-error">Недоступно в production</div>', status_code=404)
     if confirm != "I_KNOW_WHAT_I_DO":
         return HTMLResponse('<div class="alert alert-error">Неверное кодовое слово</div>', status_code=400)
-    for tbl in ("audit_log", "envelope_documents", "envelopes", "signers", "branches"):
+    for tbl in ("onec_mark_logs", "audit_log", "envelope_documents", "envelopes", "signers", "branches"):
         await session.execute(text(f"TRUNCATE TABLE {tbl} RESTART IDENTITY CASCADE"))
     await session.commit()
     return HTMLResponse(
@@ -1050,7 +1290,7 @@ async def ui_create_branch(
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.create_branch(session, name=name, operator=operator or "ui")
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="branches")
 
 
 @router.patch("/ui/admin/branches/{branch_id}", response_class=HTMLResponse)
@@ -1066,7 +1306,7 @@ async def ui_patch_branch(
         return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     await dict_svc.patch_branch(session, branch_id=branch_id, name=name, is_active=None, operator=operator or "ui")
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="branches")
 
 
 @router.post("/ui/admin/branches/{branch_id}/deactivate", response_class=HTMLResponse)
@@ -1083,7 +1323,7 @@ async def ui_deactivate_branch(
         session, branch_id=branch_id, name=None, is_active=False, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="branches")
 
 
 @router.post("/ui/admin/signers", response_class=HTMLResponse)
@@ -1101,7 +1341,7 @@ async def ui_create_signer(
         session, last_name=last_name, first_name=first_name, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="signers")
 
 
 @router.patch("/ui/admin/signers/{signer_id}", response_class=HTMLResponse)
@@ -1121,7 +1361,7 @@ async def ui_patch_signer(
         is_active=None, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="signers")
 
 
 @router.post("/ui/admin/signers/{signer_id}/deactivate", response_class=HTMLResponse)
@@ -1138,4 +1378,4 @@ async def ui_deactivate_signer(
         session, signer_id=signer_id, last_name=None, first_name=None, is_active=False, operator=operator or "ui"
     )
     await session.commit()
-    return templates.TemplateResponse(request, "partials/admin.html", await _admin_ctx(session, is_admin=is_admin))
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="signers")

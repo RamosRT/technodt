@@ -1,16 +1,22 @@
 import uuid
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_operator
-from app.db import get_session
+from app.db import get_session, get_session_factory
+from app.deps import get_one_c_client
+from app.models import EnvelopeDocument
 from app.schemas.envelope import EnvelopeOut
 from app.schemas.verify import (
     VerifyFinishRequest, VerifyFinishResponse, VerifyScanRequest, VerifyScanResponse,
 )
 from app.services import envelopes as env_svc
+from app.services import system_settings as settings_svc
 from app.services import verify as svc
+from app.services.odata import OneCClient
+from app.services.onec_marks import fire_verify_marks
 
 router = APIRouter(prefix="/api/envelopes", tags=["verify"])
 
@@ -47,8 +53,24 @@ async def verify_finish(
     body: VerifyFinishRequest,
     operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
+    one_c: OneCClient = Depends(get_one_c_client),
 ):
+    docs = (
+        await session.execute(
+            select(EnvelopeDocument).where(EnvelopeDocument.envelope_id == envelope_id)
+        )
+    ).scalars().all()
+    enable_marks = await settings_svc.is_1c_timestamps_enabled(session)
     envelope = await env_svc.get_by_id(session, envelope_id)
     res = await svc.finish(session, envelope=envelope, force=body.force, operator=operator)
     await session.commit()
+    if envelope.verified_at is not None:
+        fire_verify_marks(
+            one_c,
+            envelope_id,
+            list(docs),
+            envelope.verified_at,
+            get_session_factory(),
+            enabled=enable_marks,
+        )
     return VerifyFinishResponse(status=res.status, missing_docs=res.missing_docs)

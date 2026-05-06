@@ -1,0 +1,71 @@
+<h2>Вопрос 6: Панель настроек пользователя</h2>
+<p class="subtitle">
+  Иконка колокольчика заменяется на шестерёнку. Пользователь выбирает филиал отправки, подписанта и принтер.
+  Как открывается панель?
+</p>
+
+<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px;">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="flex:1;min-width:240px;max-width:340px;cursor:pointer;">
+    <div class="card-image" style="background:#f0f4ff;padding:16px;border-radius:8px 8px 0 0;">
+      <div style="background:#1b2848;color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+        <span>КонвертТрек</span>
+        <span style="font-size:16px;">⚙️</span>
+      </div>
+      <div style="background:rgba(0,0,0,0.4);position:relative;border-radius:4px;overflow:hidden;">
+        <div style="background:#fff;margin:24px auto;width:80%;border-radius:8px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,0.25);">
+          <div style="font-weight:700;font-size:12px;margin-bottom:10px;color:#1b2848;">Настройки</div>
+          <div style="font-size:10px;color:#555;margin-bottom:4px;">Филиал отправки</div>
+          <div style="border:1px solid #ccc;border-radius:4px;padding:4px 8px;font-size:10px;margin-bottom:8px;">Казань</div>
+          <div style="font-size:10px;color:#555;margin-bottom:4px;">Подписант</div>
+          <div style="border:1px solid #ccc;border-radius:4px;padding:4px 8px;font-size:10px;margin-bottom:8px;">Иванов И.И.</div>
+          <div style="font-size:10px;color:#555;margin-bottom:4px;">ZPL-принтер</div>
+          <div style="border:1px solid #ccc;border-radius:4px;padding:4px 8px;font-size:10px;margin-bottom:8px;">TLP-300 #1</div>
+          <div style="font-size:10px;color:#555;margin-bottom:4px;">А4-принтер</div>
+          <div style="border:1px solid #ccc;border-radius:4px;padding:4px 8px;font-size:10px;margin-bottom:8px;">HP LaserJet</div>
+          <div style="background:#2874b9;color:#fff;text-align:center;border-radius:4px;padding:4px;font-size:10px;">Сохранить</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Модальное окно</h3>
+      <p>Клик на ⚙️ открывает модалку поверх текущего экрана. Работает одинаково на ПК и ТСД.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)" style="flex:1;min-width:240px;max-width:340px;cursor:pointer;">
+    <div class="card-image" style="background:#f0f4ff;padding:16px;border-radius:8px 8px 0 0;">
+      <div style="background:#1b2848;color:#fff;padding:6px 12px;border-radius:6px;font-size:11px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+        <span>КонвертТрек</span>
+        <span style="font-size:16px;">⚙️</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <div style="background:#fff;flex:1;border-radius:6px;padding:10px;font-size:9px;box-shadow:0 1px 4px rgba(0,0,0,0.12);">
+          <div style="font-weight:700;color:#1b2848;margin-bottom:6px;">Главный экран</div>
+          <div style="background:#f5f5f5;border-radius:4px;padding:6px;margin-bottom:4px;text-align:center;">Новый конверт</div>
+          <div style="background:#f5f5f5;border-radius:4px;padding:6px;text-align:center;">Проверить</div>
+        </div>
+        <div style="background:#fff;width:110px;border-radius:6px;padding:10px;font-size:9px;box-shadow:0 1px 4px rgba(0,0,0,0.12);border-left:3px solid #2874b9;">
+          <div style="font-weight:700;color:#1b2848;margin-bottom:6px;">⚙️ Настройки</div>
+          <div style="color:#555;margin-bottom:2px;">Филиал</div>
+          <div style="border:1px solid #ddd;border-radius:3px;padding:2px 4px;margin-bottom:5px;">Казань</div>
+          <div style="color:#555;margin-bottom:2px;">Подписант</div>
+          <div style="border:1px solid #ddd;border-radius:3px;padding:2px 4px;margin-bottom:5px;">Иванов</div>
+          <div style="color:#555;margin-bottom:2px;">ZPL</div>
+          <div style="border:1px solid #ddd;border-radius:3px;padding:2px 4px;margin-bottom:5px;">TLP-300</div>
+          <div style="color:#555;margin-bottom:2px;">А4</div>
+          <div style="border:1px solid #ddd;border-radius:3px;padding:2px 4px;">HP LJ</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Боковая панель (drawer)</h3>
+      <p>Клик на ⚙️ выдвигает настройки сбоку. Основной контент остаётся виден. Привычно для веб-дашбордов.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">На ТСД оба варианта работают, но модалка проще верстать под узкий экран.</p>

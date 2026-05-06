@@ -33,11 +33,6 @@
             onclick="setMode('verify');setActiveTab(this)">
       <i data-lucide="scan-line"></i> Верификация
     </button>
-    <button class="ta-nav-item" type="button"
-            hx-get="/ui/dictionaries" hx-target="#main-area" hx-swap="innerHTML"
-            onclick="setMode('idle');setActiveTab(this)">
-      <i data-lucide="book-open"></i> Справочники
-    </button>
     {% if is_admin %}
     <button class="ta-nav-item" type="button"
             hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
@@ -61,12 +56,15 @@
     <span class="ta-admin-badge">Admin</span>
     <button class="ta-icon-btn" type="button"
             hx-get="/ui/admin" hx-target="#main-area" hx-swap="innerHTML"
-            onclick="setMode('idle')" title="Настройки">
-      <i data-lucide="settings-2"></i>
+            onclick="setMode('idle')"
+            title="Админ-панель">
+      <i data-lucide="shield-cog"></i>
     </button>
     {% endif %}
-    <button class="ta-icon-btn ta-notify-btn" type="button" title="Уведомления">
-      <i data-lucide="bell"></i>
+    <button class="ta-icon-btn" type="button"
+            hx-get="/ui/settings-drawer" hx-target="#settings-drawer-root" hx-swap="innerHTML"
+            title="Настройки">
+      <i data-lucide="settings-2"></i>
     </button>
     <button class="ta-icon-btn" type="button"
             hx-post="/ui/operator/clear" hx-target="body" hx-swap="outerHTML"
@@ -80,6 +78,7 @@
 <main class="main-content" id="main-area">
   {% block content %}{% endblock %}
 </main>
+<div id="settings-drawer-root"></div>
 
 <script>
 function setActiveTab(el) {

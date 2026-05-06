@@ -39,6 +39,12 @@ KNOWN_DOC_TYPES: tuple[str, ...] = (
     "Document_СчетФактураВыданный",
 )
 
+MARK_ELIGIBLE_ENTITIES: frozenset[str] = frozenset({"Document_СчетФактураВыданный"})
+
+PROP_REGISTERED = uuid.UUID("bda8ba09-4787-11f1-92ca-00155d060d01")
+PROP_SEALED = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
+PROP_VERIFIED = uuid.UUID("daa0fcae-4787-11f1-92ca-00155d060d01")
+
 
 @dataclass(frozen=True)
 class RelatedRef:
@@ -196,3 +202,44 @@ class OneCClient:
     async def _get_realization(self, entity: str, guid: uuid.UUID) -> httpx.Response:
         url = f"/{entity}(guid'{guid}')"
         return await self._client.get(url, params={"$format": "json", "$select": "Number,Date"})
+
+    async def mark_document(
+        self,
+        doc_guid: uuid.UUID,
+        doc_entity: str,
+        property_key: uuid.UUID,
+        value: datetime,
+    ) -> None:
+        url = "/InformationRegister_ДополнительныеСведения"
+        formatted_value = value.strftime("%Y-%m-%dT%H:%M:%S")
+        body = {
+            "Объект": str(doc_guid),
+            "Объект_Type": f"StandardODATA.{doc_entity}",
+            "Свойство_Key": str(property_key),
+            "Значение": formatted_value,
+            "Значение_Type": "Edm.DateTime",
+        }
+        params = {"$format": "json"}
+        resp = await self._client.post(url, json=body, params=params)
+        if resp.status_code in (200, 201):
+            return
+        if resp.status_code == 400:
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
+            if str(data.get("code")) == "15":
+                patch_url = (
+                    f"{url}(Объект='{doc_guid}',"
+                    f"Объект_Type='StandardODATA.{doc_entity}',"
+                    f"Свойство_Key=guid'{property_key}')"
+                )
+                patch_body = {
+                    "Значение": formatted_value,
+                    "Значение_Type": "Edm.DateTime",
+                }
+                patch_resp = await self._client.patch(patch_url, json=patch_body, params=params)
+                if patch_resp.status_code in (200, 204):
+                    return
+                raise OneCUnavailable(f"1С PATCH mark вернула {patch_resp.status_code}")
+        raise OneCUnavailable(f"1С POST mark вернула {resp.status_code}")

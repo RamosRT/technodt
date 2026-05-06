@@ -1,0 +1,26 @@
+<h2>Вопрос 1: А4-печать с бэкенда</h2>
+<p class="subtitle">Сейчас А4-опись отдаётся PDF в браузер и пользователь печатает сам. В v1.4 нужна автоматическая отправка на принтер-сервер. Как именно бэкенд должен слать PDF на <code>\\10.60.6.11\PrinterName</code>?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>win32print (Python)</h3>
+      <p>Бэкенд использует <code>win32print</code> для прямой печати через Windows Spooler. Работает только на Windows-хосте, принтер монтировать не обязательно — достаточно сетевого UNC-пути.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>subprocess → print / lpr</h3>
+      <p>Бэкенд сохраняет PDF во временный файл и вызывает системную команду (<code>print</code> или <code>lpr</code>). Просто, но зависит от установленных принтеров в системе.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Пока только PDF на скачивание / печать в браузере</h3>
+      <p>А4-печать с бэкенда не меняем — только ZPL-кнопка на ТСД добавляет А4-кнопку, но А4 по-прежнему открывается в браузере. Автопечать — в следующую итерацию.</p>
+    </div>
+  </div>
+</div>

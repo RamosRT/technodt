@@ -2,18 +2,21 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin, require_operator
-from app.db import get_session
+from app.db import get_session, get_session_factory
 from app.parsing import optional_query_date
 from app.deps import get_one_c_client
 from app.exceptions import AppError
-from app.models import EnvelopeStatus
+from app.models import EnvelopeDocument, EnvelopeStatus
 from app.schemas.document import DocumentAddRequest, DocumentOut
 from app.schemas.envelope import EnvelopeOut, SealRequest, UnsealRequest
 from app.services import envelopes as svc
 from app.services import printing
+from app.services import system_settings as settings_svc
+from app.services.onec_marks import fire_seal_marks
 from app.services.odata import OneCClient
 
 router = APIRouter(prefix="/api/envelopes", tags=["envelopes"])
@@ -111,7 +114,14 @@ async def seal_envelope(
     body: SealRequest,
     operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
+    one_c: OneCClient = Depends(get_one_c_client),
 ):
+    docs = (
+        await session.execute(
+            select(EnvelopeDocument).where(EnvelopeDocument.envelope_id == envelope_id)
+        )
+    ).scalars().all()
+    enable_marks = await settings_svc.is_1c_timestamps_enabled(session)
     envelope = await svc.get_by_id(session, envelope_id)
     sealed = await svc.seal(
         session, envelope=envelope,
@@ -122,6 +132,14 @@ async def seal_envelope(
         notes=body.notes, operator=operator,
     )
     await session.commit()
+    fire_seal_marks(
+        one_c,
+        sealed.id,
+        list(docs),
+        sealed.sealed_at,
+        get_session_factory(),
+        enabled=enable_marks,
+    )
     return await svc.get_by_id(session, sealed.id)
 
 
@@ -150,7 +168,7 @@ async def print_inventory(
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

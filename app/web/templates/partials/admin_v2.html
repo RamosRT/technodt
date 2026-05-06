@@ -1,25 +1,128 @@
-<section class="list-page">
-  <div class="page-heading">
-    <div class="page-icon"><i data-lucide="settings-2"></i></div>
-    <div>
-      <h2>Администрирование</h2>
-    </div>
-  </div>
+<section class="admin-console">
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-printers" {% if active_admin_tab|default("printers") == "printers" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-operators" {% if active_admin_tab|default("printers") == "operators" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-branches" {% if active_admin_tab|default("printers") == "branches" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-signers" {% if active_admin_tab|default("printers") == "signers" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-audit" {% if active_admin_tab|default("printers") == "audit" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-onec-marks" {% if active_admin_tab|default("printers") == "onec-marks" %}checked{% endif %}>
+  <input class="admin-tab-input" type="radio" name="admin-tab" id="admin-tab-system" {% if active_admin_tab|default("printers") == "system" %}checked{% endif %}>
 
-  <div class="admin-v2-grid">
-    <div>
-      <h3 class="section-title"><i data-lucide="users"></i> Операторы</h3>
-      <div class="data-table-wrap">
-        <table class="data-table">
+  <aside class="admin-sidebar">
+    <div class="admin-sidebar-title">
+      <span>Настройки</span>
+      <strong>Конверт-трек</strong>
+    </div>
+    <nav class="admin-nav-list" aria-label="Разделы администрирования">
+      <label class="admin-nav-item" for="admin-tab-operators">
+        <i data-lucide="users"></i><span>Операторы</span><b>{{ operators|length }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-branches">
+        <i data-lucide="building-2"></i><span>Филиалы</span><b>{{ branches|length }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-signers">
+        <i data-lucide="signature"></i><span>Подписанты</span><b>{{ signers|length }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-printers">
+        <i data-lucide="printer"></i><span>Принтеры</span><b>{{ printers|length }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-audit">
+        <i data-lucide="history"></i><span>Аудит-лог</span><b>{{ audit_items|length }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-onec-marks">
+        <i data-lucide="cloud-upload"></i><span>Отметки в 1С</span><b>{{ onec_mark_stats.failed_total }}</b>
+      </label>
+      <label class="admin-nav-item" for="admin-tab-system">
+        <i data-lucide="settings"></i><span>Система</span>
+      </label>
+    </nav>
+  </aside>
+
+  <div class="admin-content">
+    <section class="admin-panel admin-panel-printers">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Принтеры</h2>
+          <p>ZPL-этикетки и A4-описи, доступные операторам и ТСД.</p>
+        </div>
+        <button class="btn btn-primary" type="button" onclick="openModal('printer-create-modal')">
+          <i data-lucide="plus"></i> Добавить принтер
+        </button>
+      </header>
+
+      <div class="admin-table-card">
+        <table class="admin-settings-table">
           <thead>
-            <tr><th>Логин</th><th>Роль</th><th>Активен</th><th>ZPL-принтер</th><th>Создан</th><th></th></tr>
+            <tr>
+              <th>Название</th>
+              <th>Тип</th>
+              <th>Адрес / Share</th>
+              <th>Видимость</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in printers %}
+            <tr>
+              <td>
+                <strong>{{ p.name }}</strong>
+                <span>{{ p.id }}</span>
+              </td>
+              <td>
+                {% if p.kind == "zpl" %}
+                <span class="admin-kind admin-kind-zpl"><i data-lucide="zap"></i> ZPL</span>
+                {% else %}
+                <span class="admin-kind admin-kind-a4"><i data-lucide="printer"></i> A4</span>
+                {% endif %}
+              </td>
+              <td class="admin-mono">
+                {% if p.kind == "zpl" %}{{ p.host or "—" }}{% if p.port %}:{{ p.port }}{% endif %}{% if p.dpi %}<br>{{ p.dpi }} DPI{% endif %}
+                {% else %}{{ p.share_name or "—" }}{% endif %}
+              </td>
+              <td>
+                <form hx-patch="/ui/admin/printers/{{ p.id }}/toggle" hx-target="#main-area">
+                  <button class="admin-switch {% if p.is_active %}is-on{% endif %}" type="submit" aria-label="Переключить видимость">
+                    <span></span>
+                  </button>
+                </form>
+              </td>
+              <td>
+                <button class="btn btn-danger btn-sm"
+                        hx-post="/ui/admin/printers/{{ p.id }}/delete"
+                        hx-target="#main-area"
+                        hx-confirm="Удалить принтер {{ p.name }}?">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="ops-empty">Принтеры не настроены</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="admin-panel admin-panel-operators">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Операторы</h2>
+          <p>PIN, роли и принтеры рабочего места для пользователей.</p>
+        </div>
+      </header>
+
+      <div class="admin-table-card">
+        <table class="admin-settings-table">
+          <thead>
+            <tr>
+              <th>Логин</th><th>Роль</th><th>Активен</th><th>ZPL</th><th>A4</th><th>Создан</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {% for op in operators %}
             <tr>
-              <td><span class="operator-cell"><i data-lucide="user-round"></i><strong>{{ op.username }}</strong></span></td>
+              <td><strong>{{ op.username }}</strong></td>
               <td>{% if op.is_admin %}<span class="role-badge role-admin">Admin</span>{% else %}<span class="role-badge">Оператор</span>{% endif %}</td>
-              <td>{% if op.is_active %}<span class="state-badge state-on"><i data-lucide="circle"></i> Да</span>{% else %}<span class="state-badge state-off"><i data-lucide="circle"></i> Нет</span>{% endif %}</td>
+              <td>{% if op.is_active %}<span class="state-badge state-on">Да</span>{% else %}<span class="state-badge state-off">Нет</span>{% endif %}</td>
               <td>
                 <form class="inline-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
                   <select class="form-control form-control-sm" name="assigned_zpl_printer_id">
@@ -31,41 +134,43 @@
                   <button class="btn btn-ghost btn-sm" type="submit"><i data-lucide="check"></i></button>
                 </form>
               </td>
+              <td>
+                <form class="inline-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
+                  <select class="form-control form-control-sm" name="assigned_a4_printer_id">
+                    <option value="">Не менять</option>
+                    {% for printer in printers if printer.kind == "a4" %}
+                    <option value="{{ printer.id }}" {% if op.assigned_a4_printer_id == printer.id %}selected{% endif %}>{{ printer.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-ghost btn-sm" type="submit"><i data-lucide="check"></i></button>
+                </form>
+              </td>
               <td>{{ op.created_at.strftime('%d.%m.%Y') }}</td>
               <td class="row-actions">
                 <details class="row-menu">
-                  <summary class="row-menu-trigger" aria-label="Действия">
-                    <i data-lucide="ellipsis"></i>
-                  </summary>
+                  <summary class="row-menu-trigger" aria-label="Действия"><i data-lucide="ellipsis"></i></summary>
                   <div class="row-menu-panel">
                     {% if not op.is_admin %}
-                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
-                            hx-vals='{"is_admin":"true"}' hx-target="#main-area">Сделать admin</button>
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}" hx-vals='{"is_admin":"true"}' hx-target="#main-area">Сделать admin</button>
                     {% elif op.username != operator %}
-                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
-                            hx-vals='{"is_admin":"false"}' hx-target="#main-area">Снять admin</button>
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}" hx-vals='{"is_admin":"false"}' hx-target="#main-area">Снять admin</button>
                     {% endif %}
                     {% if op.is_active %}
-                    <button class="btn btn-danger btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
-                            hx-vals='{"is_active":"false"}' hx-target="#main-area">Отключить</button>
+                    <button class="btn btn-danger btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}" hx-vals='{"is_active":"false"}' hx-target="#main-area">Отключить</button>
                     {% else %}
-                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}"
-                            hx-vals='{"is_active":"true"}' hx-target="#main-area">Включить</button>
+                    <button class="btn btn-ghost btn-sm row-menu-item" hx-patch="/ui/operators/{{ op.id }}" hx-vals='{"is_active":"true"}' hx-target="#main-area">Включить</button>
                     {% endif %}
                     <form class="inline-form row-menu-form" hx-patch="/ui/operators/{{ op.id }}" hx-target="#main-area">
-                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric"
-                             pattern="[0-9]{4}" maxlength="4" type="password" required>
+                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" required>
                       <button class="btn btn-ghost btn-sm row-menu-item" type="submit">Сменить PIN</button>
                     </form>
                     <form class="inline-form row-menu-form" action="/api/operators/{{ op.id }}/auth-label.pdf" method="get" target="_blank">
                       <input type="hidden" name="server_url" value="{{ request.base_url|string|trim('/') }}">
-                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric"
-                             pattern="[0-9]{4}" maxlength="4" type="password" required>
+                      <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" required>
                       <button class="btn btn-ghost btn-sm row-menu-item" type="submit">QR ТСД (PDF)</button>
                     </form>
                     {% if op.username != operator %}
-                    <button class="btn btn-danger btn-sm row-menu-item" hx-post="/ui/operators/{{ op.id }}/delete"
-                            hx-target="#main-area" hx-confirm="Удалить оператора {{ op.username }}?">Удалить</button>
+                    <button class="btn btn-danger btn-sm row-menu-item" hx-post="/ui/operators/{{ op.id }}/delete" hx-target="#main-area" hx-confirm="Удалить оператора {{ op.username }}?">Удалить</button>
                     {% endif %}
                   </div>
                 </details>
@@ -76,36 +181,261 @@
         </table>
       </div>
 
-      <form class="filter-bar" hx-post="/ui/operators" hx-target="#main-area">
+      <form class="admin-inline-create" hx-post="/ui/operators" hx-target="#main-area">
         <input class="form-control" name="username" placeholder="Логин" required>
-        <input class="form-control pin-input" name="password" placeholder="PIN" inputmode="numeric"
-               pattern="[0-9]{4}" maxlength="4" type="password" required>
+        <input class="form-control pin-input" name="password" placeholder="PIN" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" required>
         <select class="form-control" name="assigned_zpl_printer_id">
           <option value="">ZPL-принтер</option>
           {% for printer in printers if printer.kind == "zpl" %}
           <option value="{{ printer.id }}">{{ printer.name }}</option>
           {% endfor %}
         </select>
+        <select class="form-control" name="assigned_a4_printer_id">
+          <option value="">A4-принтер</option>
+          {% for printer in printers if printer.kind == "a4" %}
+          <option value="{{ printer.id }}">{{ printer.name }}</option>
+          {% endfor %}
+        </select>
         <label class="checkbox-inline"><input type="checkbox" name="is_admin" value="true"> Admin</label>
         <button class="btn btn-primary" type="submit"><i data-lucide="user-plus"></i> Добавить</button>
       </form>
-    </div>
+    </section>
 
-    <div>
-      <h3 class="section-title"><i data-lucide="history"></i> Последние события</h3>
-      <div id="audit-panel">
-        {% include "partials/audit_panel.html" %}
+    <section class="admin-panel admin-panel-branches">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Филиалы</h2>
+          <p>Активные филиалы для отправки и получения конвертов.</p>
+        </div>
+      </header>
+      <div class="admin-card-grid admin-edit-list">
+        {% for b in branches %}
+        <div class="admin-mini-card">
+          <i data-lucide="building-2"></i>
+          <strong>{{ b.name }}</strong>
+          <div class="admin-mini-actions">
+            <button class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-admin-edit="branch"
+                    data-id="{{ b.id }}"
+                    data-name="{{ b.name }}">
+              <i data-lucide="pencil"></i>
+            </button>
+            <button class="btn btn-danger btn-sm admin-delete-soft"
+                    hx-post="/ui/admin/branches/{{ b.id }}/deactivate"
+                    hx-confirm="Деактивировать филиал?"
+                    hx-target="#main-area">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        </div>
+        {% else %}
+        <div class="admin-empty-card">Филиалы не настроены</div>
+        {% endfor %}
+      </div>
+      <form class="admin-inline-create admin-branch-create" hx-post="/ui/admin/branches" hx-target="#main-area">
+        <input class="form-control" name="name" placeholder="Название филиала" required>
+        <button class="btn btn-primary" type="submit"><i data-lucide="plus"></i> Добавить</button>
+      </form>
+    </section>
+
+    <section class="admin-panel admin-panel-signers">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Подписанты</h2>
+          <p>Сотрудники, которые попадают в опись и маршрут конверта.</p>
+        </div>
+      </header>
+      <div class="admin-card-grid admin-edit-list">
+        {% for s in signers %}
+        <div class="admin-mini-card">
+          <i data-lucide="signature"></i>
+          <strong>{{ s.last_name }} {{ s.first_name }}</strong>
+          <div class="admin-mini-actions">
+            <button class="btn btn-ghost btn-sm"
+                    type="button"
+                    data-admin-edit="signer"
+                    data-id="{{ s.id }}"
+                    data-last-name="{{ s.last_name }}"
+                    data-first-name="{{ s.first_name }}">
+              <i data-lucide="pencil"></i>
+            </button>
+            <button class="btn btn-danger btn-sm admin-delete-soft"
+                    hx-post="/ui/admin/signers/{{ s.id }}/deactivate"
+                    hx-confirm="Деактивировать подписанта?"
+                    hx-target="#main-area">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        </div>
+        {% else %}
+        <div class="admin-empty-card">Подписанты не настроены</div>
+        {% endfor %}
+      </div>
+      <form class="admin-inline-create admin-signer-create" hx-post="/ui/admin/signers" hx-target="#main-area">
+        <input class="form-control" name="last_name" placeholder="Фамилия" required>
+        <input class="form-control" name="first_name" placeholder="Имя" required>
+        <button class="btn btn-primary" type="submit"><i data-lucide="plus"></i> Добавить</button>
+      </form>
+    </section>
+
+    <section class="admin-panel admin-panel-audit">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Аудит-лог</h2>
+          <p>Последние системные и пользовательские события.</p>
+        </div>
+      </header>
+      <div id="audit-panel">{% include "partials/audit_panel.html" %}</div>
+    </section>
+
+    <section class="admin-panel admin-panel-onec-marks">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Отметки в 1С</h2>
+          <p>Последние попытки проставить даты регистрации, запечатывания и проверки документов.</p>
+        </div>
+      </header>
+
+      <div class="onec-mark-summary">
+        <div class="onec-mark-stat">
+          <i data-lucide="check-circle-2"></i>
+          <div><strong>{{ onec_mark_stats.success_total }}</strong><span>Успешно</span></div>
+        </div>
+        <div class="onec-mark-stat mark-stat-error">
+          <i data-lucide="circle-alert"></i>
+          <div><strong>{{ onec_mark_stats.failed_total }}</strong><span>Ошибок всего</span></div>
+        </div>
+        <div class="onec-mark-stat">
+          <i data-lucide="calendar-clock"></i>
+          <div><strong>{{ onec_mark_stats.recent_failed }}</strong><span>Ошибок сегодня</span></div>
+        </div>
       </div>
 
-      {% if show_reset %}
-      <div class="danger-zone">
-        <h3><i data-lucide="triangle-alert"></i> Опасная зона</h3>
-        <button class="btn btn-danger" onclick="openModal('reset-modal')"><i data-lucide="trash-2"></i> Сброс базы данных</button>
+      <div class="admin-table-card">
+        <table class="admin-settings-table onec-mark-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Статус</th>
+              <th>Конверт</th>
+              <th>Документ</th>
+              <th>Отметка</th>
+              <th>Ошибка</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in onec_mark_rows %}
+            <tr>
+              <td class="admin-mono">{{ row.log.attempted_at.strftime('%d.%m %H:%M') }}</td>
+              <td>
+                {% if row.log.status == "success" %}
+                <span class="state-badge state-on">Отмечен</span>
+                {% else %}
+                <span class="state-badge state-off">Ошибка</span>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ row.envelope_number or "—" }}</strong>
+                {% if row.envelope_barcode %}<span>{{ row.envelope_barcode }}</span>{% endif %}
+              </td>
+              <td class="admin-mono">
+                <strong>{{ row.log.doc_guid|string|truncate(18, True, '...') }}</strong>
+                <span>{{ row.log.doc_entity }}</span>
+              </td>
+              <td>{{ row.log.property_name }}</td>
+              <td class="onec-error-cell">{{ row.log.error or "—" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="ops-empty">Отметок в 1С пока нет</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% endif %}
-    </div>
+    </section>
+
+    <section class="admin-panel admin-panel-system">
+      <header class="admin-panel-head">
+        <div>
+          <h2>Система</h2>
+          <p>Служебные параметры и тестовые операции.</p>
+        </div>
+      </header>
+      <div class="admin-system-grid">
+        <div class="admin-system-card">
+          <i data-lucide="clock-3"></i>
+          <div>
+            <strong>Отметки времени в 1С</strong>
+            <span>{% if enable_1c_timestamps %}Включены для всех клиентов{% else %}Выключены для всех клиентов{% endif %}</span>
+          </div>
+          <form class="admin-system-toggle" hx-patch="/ui/admin/settings/1c-timestamps" hx-target="#main-area">
+            <input type="hidden" name="enabled" value="{% if enable_1c_timestamps %}false{% else %}true{% endif %}">
+            <button class="admin-switch {% if enable_1c_timestamps %}is-on{% endif %}" type="submit" aria-label="Переключить отметки времени в 1С">
+              <span></span>
+            </button>
+          </form>
+        </div>
+        {% if show_reset %}
+        <div class="danger-zone">
+          <h3><i data-lucide="triangle-alert"></i> Опасная зона</h3>
+          <button class="btn btn-danger" onclick="openModal('reset-modal')"><i data-lucide="trash-2"></i> Сброс базы данных</button>
+        </div>
+        {% endif %}
+      </div>
+    </section>
   </div>
 </section>
+
+<div id="printer-create-modal" hidden>
+<div class="modal-overlay" onclick="if(event.target===this)this.parentElement.setAttribute('hidden','')">
+<div class="modal admin-printer-modal">
+  <div class="modal-title">Добавить принтер</div>
+  <form hx-post="/ui/admin/printers" hx-target="#main-area" onsubmit="closeModal('printer-create-modal')">
+    <div class="admin-printer-form-grid">
+      <div class="form-row">
+        <label>Название</label>
+        <input class="form-control" name="name" placeholder="TLP-300 Склад №2" required>
+      </div>
+      <div class="form-row">
+        <label>Тип</label>
+        <select class="form-control" name="kind">
+          <option value="zpl">ZPL</option>
+          <option value="a4">A4</option>
+        </select>
+      </div>
+      <div class="form-row admin-form-wide">
+        <label>ID (slug)</label>
+        <input class="form-control" name="id" placeholder="tlp300-sklad-2" required>
+      </div>
+      <div class="form-row">
+        <label>IP-адрес (ZPL) / Share name (A4)</label>
+        <input class="form-control" name="host" placeholder="10.60.6.47 или hp-lj-buh">
+      </div>
+      <div class="form-row">
+        <label>Порт / DPI</label>
+        <div class="admin-form-pair">
+          <input class="form-control" name="port" placeholder="9100" type="number">
+          <input class="form-control" name="dpi" placeholder="200" type="number">
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('printer-create-modal')">Отмена</button>
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+    </div>
+  </form>
+</div>
+</div>
+</div>
+
+<div id="admin-edit-modal" hidden>
+<div class="modal-overlay" onclick="if(event.target===this)closeModal('admin-edit-modal')">
+<div class="modal">
+  <div class="modal-title" id="admin-edit-title">Редактировать</div>
+  <div id="admin-edit-body"></div>
+</div>
+</div>
+</div>
 
 {% if show_reset %}
 <div id="reset-modal" hidden>

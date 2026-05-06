@@ -1,0 +1,57 @@
+<div class="modal-overlay" onclick="if(event.target===this)this.remove()">
+  <aside class="modal" style="margin-left:auto;max-width:420px;height:100vh;border-radius:0;padding:20px;overflow:auto;">
+    <div class="modal-title">Настройки</div>
+    <form hx-patch="/ui/settings"
+          hx-swap="none"
+          hx-on::after-request="if(event.detail.successful) document.getElementById('settings-drawer-root').innerHTML=''">
+      <div class="form-row">
+        <label>Филиал отправки</label>
+        <select class="form-control" name="default_branch_id">
+          <option value="">Не выбран</option>
+          {% for branch in branches %}
+          <option value="{{ branch.id }}" {% if operator_row and operator_row.default_branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Подписант отправителя</label>
+        <select class="form-control" name="default_signer_sender_id">
+          <option value="">Не выбран</option>
+          {% for signer in signers %}
+          <option value="{{ signer.id }}" {% if operator_row and operator_row.default_signer_sender_id == signer.id %}selected{% endif %}>{{ signer.last_name }} {{ signer.first_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>ZPL-принтер</label>
+        <select class="form-control" name="assigned_zpl_printer_id">
+          <option value="">Не выбран</option>
+          {% for printer in printers if printer.kind == "zpl" %}
+          <option value="{{ printer.id }}" {% if operator_row and operator_row.assigned_zpl_printer_id == printer.id %}selected{% endif %}>{{ printer.name }}{% if printer.host %} · {{ printer.host }}:{{ printer.port }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>A4-принтер</label>
+        <select class="form-control" name="assigned_a4_printer_id">
+          <option value="">Не выбран</option>
+          {% for printer in printers if printer.kind == "a4" %}
+          <option value="{{ printer.id }}" {% if operator_row and operator_row.assigned_a4_printer_id == printer.id %}selected{% endif %}>{{ printer.name }}{% if printer.share_name %} · {{ printer.share_name }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if is_admin %}
+      <div class="form-row">
+        <label class="checkbox-inline">
+          <input type="checkbox" {% if enable_1c_timestamps %}checked{% endif %} disabled>
+          Отметки времени в 1С: {% if enable_1c_timestamps %}включены{% else %}выключены{% endif %}
+        </label>
+      </div>
+      {% endif %}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('settings-drawer-root').innerHTML=''">Закрыть</button>
+        <button type="submit" class="btn btn-primary"><i data-lucide="save"></i> Сохранить</button>
+      </div>
+    </form>
+  </aside>
+</div>

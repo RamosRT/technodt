@@ -86,6 +86,12 @@ interface EnvelopeApi {
         @retrofit2.http.Query("printer_id") printerId: String,
     ): retrofit2.Response<Unit>
 
+    @POST("api/envelopes/{envelopeId}/print/inventory/send")
+    suspend fun printInventory(
+        @Path("envelopeId") envelopeId: String,
+        @retrofit2.http.Query("printer_id") printerId: String,
+    ): retrofit2.Response<Unit>
+
     @POST("api/envelopes/{envelopeId}/verify/start")
     suspend fun verifyStart(@Path("envelopeId") envelopeId: String): EnvelopeDto
 
