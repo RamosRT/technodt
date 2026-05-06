@@ -16,11 +16,31 @@
 
 ### Web: экран входа
 
-![Web Login](design/system/web_design_reference/Login_Screen_Web.png)
+![Web Login](docs/screenshots/web-login-real.png)
 
-### Web: рабочий экран
+### Web: рабочий дашборд
 
-![Web Main](design/system/web_design_reference/Main_page_Web.png)
+![Web Dashboard](docs/screenshots/web-dashboard-real.png)
+
+### Web: режим верификации
+
+![Web Verify](docs/screenshots/web-verify-real.png)
+
+### Android TSD: экран входа
+
+![TSD Login](docs/screenshots/tsd-login-real.png)
+
+### Android TSD: рабочий экран регистрации
+
+![TSD Registration](docs/screenshots/tsd-registration-real.png)
+
+### Android TSD: экран верификации
+
+![TSD Verify](docs/screenshots/tsd-verify-real.png)
+
+### Android TSD: настройки сервера
+
+![TSD Settings](docs/screenshots/tsd-settings-real.png)
 
 ---
 
