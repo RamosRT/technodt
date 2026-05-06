@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +65,7 @@ async def scan(session: AsyncSession, *, envelope: Envelope, barcode: str, opera
             reason="already_scanned",
         )
     if doc.scanned_at_verification is None:
-        doc.scanned_at_verification = datetime.now(timezone.utc)
+        doc.scanned_at_verification = datetime.now(UTC)
     await write_event(session, envelope_id=envelope.id, event="verify_scan", actor=operator,
                       payload={"barcode": barcode, "matched": True, "doc_id": str(doc.id)})
     return ScanResult(matched=True, doc_id=doc.id, scanned_at=doc.scanned_at_verification)
@@ -83,7 +83,7 @@ async def finish(session: AsyncSession, *, envelope: Envelope, force: bool, oper
     if missing and not force:
         raise VerificationUnscanned(f"Не отсканировано документов: {len(missing)}")
     envelope.status = EnvelopeStatus.verified_with_discrepancy if missing else EnvelopeStatus.verified
-    envelope.verified_at = datetime.now(timezone.utc)
+    envelope.verified_at = datetime.now(UTC)
     await write_event(session, envelope_id=envelope.id, event="verify_finish", actor=operator,
                       payload={"force": force, "missing": [str(m) for m in missing]})
     return FinishResult(status=envelope.status.value, missing_docs=missing)

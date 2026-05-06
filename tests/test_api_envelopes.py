@@ -3,6 +3,7 @@ from datetime import date as _date
 from unittest.mock import AsyncMock
 
 import pytest
+
 from app.services.odata import NormalizedDocument
 
 
@@ -24,8 +25,8 @@ def _norm():
 @pytest.fixture
 def stub_one_c():
     """Replaces the OneCClient on app.dependency_overrides with an AsyncMock."""
-    from app.main import app
     from app.deps import get_one_c_client
+    from app.main import app
     mock = AsyncMock()
     mock.lookup_document_with_related.return_value = _norm()
     app.dependency_overrides[get_one_c_client] = lambda: mock

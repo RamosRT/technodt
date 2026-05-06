@@ -1,13 +1,12 @@
 import csv
 import io
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Branch, Envelope, EnvelopeDocument, EnvelopeStatus
-
 
 LEGACY_TRANSFER_KIND = "Перемещение товаров"
 SHORT_TRANSFER_KIND = "ПРМ"
@@ -18,8 +17,8 @@ def _canonical_doc_kind(value: str) -> str:
 
 
 def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
-    start = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
-    end = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
+    start = datetime.combine(date_from, time.min, tzinfo=UTC) if date_from else None
+    end = datetime.combine(date_to, time.max, tzinfo=UTC) if date_to else None
     return start, end
 
 

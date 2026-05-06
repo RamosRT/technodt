@@ -7,17 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin, require_operator
 from app.db import get_session, get_session_factory
-from app.parsing import optional_query_date
 from app.deps import get_one_c_client
 from app.exceptions import AppError
 from app.models import EnvelopeDocument, EnvelopeStatus
+from app.parsing import optional_query_date
 from app.schemas.document import DocumentAddRequest, DocumentOut
 from app.schemas.envelope import EnvelopeOut, SealRequest, UnsealRequest
 from app.services import envelopes as svc
 from app.services import printing
 from app.services import system_settings as settings_svc
-from app.services.onec_marks import fire_seal_marks
 from app.services.odata import OneCClient
+from app.services.onec_marks import fire_seal_marks
 
 router = APIRouter(prefix="/api/envelopes", tags=["envelopes"])
 

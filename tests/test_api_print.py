@@ -12,7 +12,6 @@ import pytest
 
 from app.services.odata import NormalizedDocument
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 FAKE_PDF = b"%PDF-1.4 fake"

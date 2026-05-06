@@ -3,17 +3,17 @@ import asyncio
 import base64
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.branch import Branch
 from app.models.printer import Printer
 from app.models.signer import Signer
-from app.config import get_settings
 from app.services.envelopes import get_by_id
 
 _TEMPLATES = Path(__file__).parent.parent / "web" / "templates"
@@ -145,7 +145,7 @@ async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) ->
             module_height=16.0,
             quiet_zone=4.0,
         ),
-        print_date=datetime.now(timezone.utc),
+        print_date=datetime.now(UTC),
         **related,
     )
     html_str = _jinja_env().get_template("print/inventory.html").render(**ctx)
@@ -198,7 +198,7 @@ async def render_label_pdf(session: AsyncSession, envelope_id: uuid.UUID) -> byt
             module_height=18.0,
             quiet_zone=1.0,
         ),
-        print_date=datetime.now(timezone.utc),
+        print_date=datetime.now(UTC),
     )
     html_str = _jinja_env().get_template("print/label.html").render(**ctx)
     return await _html_to_pdf(html_str)
@@ -224,7 +224,7 @@ async def render_discrepancy_act_pdf(session: AsyncSession, envelope_id: uuid.UU
     ctx = dict(
         envelope=envelope,
         documents=docs_sorted,
-        print_date=datetime.now(timezone.utc),
+        print_date=datetime.now(UTC),
         **related,
     )
     html_str = _jinja_env().get_template("print/discrepancy_act.html").render(**ctx)

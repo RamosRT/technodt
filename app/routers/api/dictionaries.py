@@ -6,8 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import require_operator
 from app.db import get_session
 from app.schemas.dictionary import (
-    BranchCreate, BranchOut, BranchPatch,
-    SignerCreate, SignerOut, SignerPatch,
+    BranchCreate,
+    BranchOut,
+    BranchPatch,
+    SignerCreate,
+    SignerOut,
+    SignerPatch,
 )
 from app.services import dictionaries as svc
 

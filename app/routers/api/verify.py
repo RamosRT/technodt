@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,10 @@ from app.deps import get_one_c_client
 from app.models import EnvelopeDocument
 from app.schemas.envelope import EnvelopeOut
 from app.schemas.verify import (
-    VerifyFinishRequest, VerifyFinishResponse, VerifyScanRequest, VerifyScanResponse,
+    VerifyFinishRequest,
+    VerifyFinishResponse,
+    VerifyScanRequest,
+    VerifyScanResponse,
 )
 from app.services import envelopes as env_svc
 from app.services import system_settings as settings_svc

@@ -7,9 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.db import get_engine, get_session, get_session_factory
+from app.db import get_session
 from app.main import app
-from app.models import Base
 
 
 def _test_db_url() -> str:

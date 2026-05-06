@@ -1,5 +1,6 @@
-import uuid
 import re
+import uuid
+
 import pytest
 
 from app.exceptions import BarcodeError

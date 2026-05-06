@@ -1,6 +1,6 @@
 """UI routes — renders Jinja2 templates for the single-page HTMX frontend."""
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote, unquote
@@ -35,8 +35,8 @@ from app.parsing import optional_query_date
 from app.schemas.printer import PrinterCreate, PrinterPatch
 from app.services import documents as doc_svc
 from app.services import operators as op_svc
-from app.services.onec_marks import fire_seal_marks, fire_verify_marks
 from app.services.odata import OneCClient
+from app.services.onec_marks import fire_seal_marks, fire_verify_marks
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TMPL_DIR))
@@ -145,14 +145,15 @@ async def _audit_screen_context(
     actor: str | None = None,
     envelope: str | None = None,
 ) -> dict:
-    from datetime import datetime, time, timezone
+    from datetime import datetime, time
+
     from sqlalchemy import or_
 
     stmt = select(AuditLog).outerjoin(Envelope, AuditLog.envelope_id == Envelope.id)
     if date_from:
-        stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+        stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=UTC))
     if date_to:
-        stmt = stmt.where(AuditLog.at <= datetime.combine(date_to, time.max, tzinfo=timezone.utc))
+        stmt = stmt.where(AuditLog.at <= datetime.combine(date_to, time.max, tzinfo=UTC))
     if event:
         stmt = stmt.where(AuditLog.event == event)
     if actor:
@@ -231,7 +232,7 @@ async def _onec_marks_context(
             .where(
                 OneCMarkLog.status == "failed",
                 OneCMarkLog.attempted_at >= datetime.combine(
-                    datetime.now(timezone.utc).date(), time.min, tzinfo=timezone.utc
+                    datetime.now(UTC).date(), time.min, tzinfo=UTC
                 ),
             )
         )
@@ -330,9 +331,9 @@ def _event_title(event: str, payload: dict | None, envelope_number: str | None) 
 
 
 async def _dashboard_context(session: AsyncSession, *, is_admin: bool) -> dict:
-    now = datetime.now(timezone.utc)
-    day_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
-    day_end = datetime.combine(now.date(), time.max, tzinfo=timezone.utc)
+    now = datetime.now(UTC)
+    day_start = datetime.combine(now.date(), time.min, tzinfo=UTC)
+    day_end = datetime.combine(now.date(), time.max, tzinfo=UTC)
 
     draft_with_docs_subq = (
         select(Envelope.id)

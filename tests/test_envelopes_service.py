@@ -9,7 +9,6 @@ from app.models import AuditLog, Envelope, EnvelopeDocument, EnvelopeStatus
 from app.services import envelopes as svc
 from app.services.odata import NormalizedDocument
 
-
 # ---------------------------------------------------------------------------
 # Task 15: create_envelope
 # ---------------------------------------------------------------------------

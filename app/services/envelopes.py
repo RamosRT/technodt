@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -10,24 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.exceptions import (
+    AppError,
     DocumentAlreadyInEnvelope,
     EnvelopeNotDraft,
     EnvelopeNotFound,
     InvalidSealPayload,
-    AppError,
 )
 from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Signer
 from app.services.audit import write_event
 from app.services.barcode import doc_barcode_to_guid, generate_envelope_codes
 from app.services.odata import OneCClient
 
-
 MAX_CODE_RETRIES = 5
 
 
 def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
-    start = datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
-    end = datetime.combine(date_to, time.max, tzinfo=timezone.utc) if date_to else None
+    start = datetime.combine(date_from, time.min, tzinfo=UTC) if date_from else None
+    end = datetime.combine(date_to, time.max, tzinfo=UTC) if date_to else None
     return start, end
 
 
@@ -396,7 +395,7 @@ async def seal(
         raise InvalidSealPayload("Указан несуществующий или неактивный подписант")
 
     envelope.status = EnvelopeStatus.sealed
-    envelope.sealed_at = datetime.now(timezone.utc)
+    envelope.sealed_at = datetime.now(UTC)
     envelope.signer_sender_id = signer_sender_id
     envelope.signer_receiver_id = signer_receiver_id
     envelope.origin_branch_id = origin_branch_id

@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from app.exceptions import DocumentNotInOneC, OneCUnavailable
-from app.services.odata import KNOWN_DOC_TYPES, OneCClient, SELECT_FIELDS, normalize_document
+from app.services.odata import KNOWN_DOC_TYPES, SELECT_FIELDS, OneCClient, normalize_document
 
 FIXTURES = Path(__file__).parent / "fixtures" / "odata"
 

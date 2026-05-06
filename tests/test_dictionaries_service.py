@@ -1,7 +1,6 @@
 import pytest
 
 from app.services import dictionaries as svc
-from app.models import Branch, Signer
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,4 @@
-import uuid
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -8,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin
 from app.db import get_session
-from app.parsing import optional_query_date
 from app.models import AuditLog, Envelope
+from app.parsing import optional_query_date
 from app.schemas.audit import AuditOut
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -31,9 +30,9 @@ async def get_audit(
     date_to = optional_query_date(date_to_raw)
     stmt = select(AuditLog).outerjoin(Envelope, AuditLog.envelope_id == Envelope.id)
     if date_from:
-        stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+        stmt = stmt.where(AuditLog.at >= datetime.combine(date_from, time.min, tzinfo=UTC))
     if date_to:
-        stmt = stmt.where(AuditLog.at <= datetime.combine(date_to, time.max, tzinfo=timezone.utc))
+        stmt = stmt.where(AuditLog.at <= datetime.combine(date_to, time.max, tzinfo=UTC))
     if event:
         stmt = stmt.where(AuditLog.event == event)
     if actor:

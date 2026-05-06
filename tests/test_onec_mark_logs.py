@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +13,7 @@ from app.services.operators import ensure_operator
 DOC_GUID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 ENTITY = "Document_СчетФактураВыданный"
 PROP_KEY = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
-VALUE = datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc)
+VALUE = datetime(2026, 5, 6, 10, 0, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,7 +21,7 @@ BASE = "http://1c.example/odata/standard.odata"
 PROP_KEY = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
 DOC_GUID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 ENTITY = "Document_СчетФактураВыданный"
-VALUE = datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc)
+VALUE = datetime(2026, 5, 6, 10, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
