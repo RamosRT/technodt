@@ -46,3 +46,4 @@ tmp/
 .claude/
 
 .worktrees/
+.claude/settings.local.json

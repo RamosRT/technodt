@@ -87,7 +87,9 @@
       "PowerShell(adb devices *)",
       "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
       "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb logcat -c)",
-      "PowerShell(Select-String *)"
+      "PowerShell(Select-String *)",
+      "PowerShell($adb = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://127.0.0.1:8080/\" -UseBasicParsing -TimeoutSec 5)"
     ]
   }
 }
