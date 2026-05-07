@@ -280,6 +280,11 @@ async def _envelope_card_context(
 ) -> dict:
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
+    operator_row = None
+    if operator:
+        operator_row = (
+            await session.execute(select(Operator).where(Operator.username == operator))
+        ).scalar_one_or_none()
     return {
         "envelope": envelope,
         "documents": envelope.documents,
@@ -287,6 +292,7 @@ async def _envelope_card_context(
         "signers": signers,
         "status_labels": STATUS_LABELS,
         "operator": operator,
+        "operator_row": operator_row,
         "is_admin": is_admin,
         "audit_events": await _audit_events(session, envelope.id),
     }
