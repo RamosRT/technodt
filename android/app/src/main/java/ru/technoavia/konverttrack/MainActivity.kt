@@ -1001,7 +1001,7 @@ private fun LoginScreen(
             }
             Spacer(modifier = Modifier.height(if (compactHeight) 10.dp else 16.dp))
             LoginDeviceIndicator(
-                text = "Устройство: ${Build.MODEL.ifBlank { "ТСД" }} · DataWedge",
+                text = "Устройство: ${Build.MODEL.ifBlank { "ТСД" }}",
             )
             Spacer(modifier = Modifier.weight(1f))
             StaticLogoBadge(
@@ -1010,7 +1010,7 @@ private fun LoginScreen(
                     .offset(x = if (compactHeight) 10.dp else 18.dp, y = 0.dp),
             )
             Spacer(modifier = Modifier.height(if (compactHeight) 8.dp else 18.dp))
-            Text("v1.2.0 · build 184", style = MaterialTheme.typography.labelSmall, color = FgMuted)
+            Text("v1.4.0", style = MaterialTheme.typography.labelSmall, color = FgMuted)
             Spacer(modifier = Modifier.height(if (compactHeight) 14.dp else 34.dp))
         }
         if (isLoading) {
@@ -1787,7 +1787,7 @@ private fun RegisterScreen(
                     }
                     Button(
                         onClick = sealAction,
-                        enabled = !isSealing && canSeal,
+                        enabled = !isSealing,
                         modifier = Modifier.weight(1f).height(56.dp),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
@@ -2299,7 +2299,7 @@ private fun ServiceScreen(
                     ServiceRow(
                         icon = R.drawable.ic_info,
                         title = "Версия",
-                        value = "v1.2.0 · build 1",
+                        value = "v1.4.0",
                         showChevron = false,
                     )
                 }
@@ -2647,7 +2647,7 @@ private fun ConnBanner(isOnline: Boolean, label: String? = null) {
         )
         Text(text, style = MaterialTheme.typography.labelSmall, color = FgLabel)
         Spacer(modifier = Modifier.weight(1f))
-        Text("v1.2.0", style = MaterialTheme.typography.labelSmall, color = FgLabel.copy(alpha = 0.55f))
+        Text("v1.4.0", style = MaterialTheme.typography.labelSmall, color = FgLabel.copy(alpha = 0.55f))
     }
 }
 

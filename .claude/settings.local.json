@@ -89,7 +89,12 @@
       "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb logcat -c)",
       "PowerShell(Select-String *)",
       "PowerShell($adb = \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
-      "PowerShell(Invoke-WebRequest -Uri \"http://127.0.0.1:8080/\" -UseBasicParsing -TimeoutSec 5)"
+      "PowerShell(Invoke-WebRequest -Uri \"http://127.0.0.1:8080/\" -UseBasicParsing -TimeoutSec 5)",
+      "Bash(C:\\\\Users\\\\Ramos\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.1.0\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh *)",
+      "Bash(node *)",
+      "Bash(export JAVA_HOME=\"/e/technodt/android/.jdk/jdk-17.0.19+10\")",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Ramos\\\\AppData\\\\Roaming\\\\\" -ErrorAction SilentlyContinue | Where-Object {$_.Name -match \"java|jdk|android|studio\"} | Select-Object -ExpandProperty Name)",
+      "Bash(export JAVA_HOME=\"E:/AndroidStudio/jbr\")"
     ]
   }
 }
