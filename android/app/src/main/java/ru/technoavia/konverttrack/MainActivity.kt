@@ -1573,6 +1573,7 @@ private fun RegisterScreen(
     var printError by remember { mutableStateOf<String?>(null) }
     var showSealSignerSheet by remember { mutableStateOf(false) }
     var sealSignersList by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
+    var sealSignersError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -1581,6 +1582,7 @@ private fun RegisterScreen(
             ApiClient.settingsApi(serverUrl).signers()
                 .map { SelectOption(it.id, "${it.last_name} ${it.first_name}") }
         }.onSuccess { sealSignersList = it }
+         .onFailure { sealSignersError = "Не удалось загрузить список подписантов" }
     }
 
     val canSeal = envelope.documents.isNotEmpty() && branchId.isNotBlank() && signerId.isNotBlank()
@@ -1804,6 +1806,7 @@ private fun RegisterScreen(
     if (showSealSignerSheet) {
         SelectionSheet(
             title = "Подписант № 2 (экспедитор)",
+            desc = sealSignersError ?: "",
             options = sealSignersList,
             selectedId = "",
             onSelect = { selected ->
