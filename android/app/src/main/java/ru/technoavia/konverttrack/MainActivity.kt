@@ -1571,9 +1571,44 @@ private fun RegisterScreen(
     var isSealing by remember { mutableStateOf(false) }
     var printMessage by remember { mutableStateOf<String?>(null) }
     var printError by remember { mutableStateOf<String?>(null) }
+    var showSealSignerSheet by remember { mutableStateOf(false) }
+    var sealSignersList by remember { mutableStateOf<List<SelectOption>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    LaunchedEffect(serverUrl) {
+        runCatching {
+            ApiClient.settingsApi(serverUrl).signers()
+                .map { SelectOption(it.id, "${it.last_name} ${it.first_name}") }
+        }.onSuccess { sealSignersList = it }
+    }
+
     val canSeal = envelope.documents.isNotEmpty() && branchId.isNotBlank() && signerId.isNotBlank()
+
+    val doSeal: (String) -> Unit = { signer2Id ->
+        scope.launch {
+            isSealing = true
+            sealError = null
+            sealMessage = null
+            runCatching {
+                ApiClient.envelopeApi(serverUrl).sealEnvelope(
+                    envelope.id,
+                    SealRequest(
+                        signer_sender_id = signerId,
+                        signer_receiver_id = signer2Id,
+                        origin_branch_id = branchId,
+                    ),
+                )
+            }.onSuccess { sealed ->
+                onEnvelopeChanged(sealed)
+                sealMessage = "Конверт запечатан"
+            }.onFailure { err ->
+                sealError = apiErrorText(err)
+            }
+            isSealing = false
+        }
+    }
+
     val sealAction: () -> Unit = {
         if (!canSeal) {
             sealError = if (envelope.documents.isEmpty()) {
@@ -1582,27 +1617,7 @@ private fun RegisterScreen(
                 "Выберите филиал и подписанта в сервисном меню"
             }
         } else {
-            scope.launch {
-                isSealing = true
-                sealError = null
-                sealMessage = null
-                runCatching {
-                    ApiClient.envelopeApi(serverUrl).sealEnvelope(
-                        envelope.id,
-                        SealRequest(
-                            signer_sender_id = signerId,
-                            signer_receiver_id = signerId,
-                            origin_branch_id = branchId,
-                        ),
-                    )
-                }.onSuccess { sealed ->
-                    onEnvelopeChanged(sealed)
-                    sealMessage = "Конверт запечатан"
-                }.onFailure { err ->
-                    sealError = apiErrorText(err)
-                }
-                isSealing = false
-            }
+            showSealSignerSheet = true
         }
     }
 
@@ -1785,6 +1800,19 @@ private fun RegisterScreen(
         BrandLoadingOverlay("Запечатываем конверт...")
     }
     } // Box
+
+    if (showSealSignerSheet) {
+        SelectionSheet(
+            title = "Подписант № 2 (экспедитор)",
+            options = sealSignersList,
+            selectedId = "",
+            onSelect = { selected ->
+                showSealSignerSheet = false
+                doSeal(selected.id)
+            },
+            onDismiss = { showSealSignerSheet = false },
+        )
+    }
 }
 
 @Composable
