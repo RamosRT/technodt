@@ -112,6 +112,7 @@ copy .env.example .env
 | `DATABASE_URL`          | asyncpg-строка подключения к рабочей БД               |
 | `DATABASE_URL_TEST`     | asyncpg-строка подключения к тестовой БД              |
 | `ADMIN_TOKEN`           | Секретный токен для `X-Admin-Token` (эндпоинт сброса) |
+| `QR_BASE_URL`           | (Опц.) Базовый URL для QR входа в production (`http://host/technodt`) |
 | `ODATA_BASE_URL`        | Корень OData-сервиса 1С (`…/odata/standard.odata`)    |
 | `ODATA_ADMIN_USER`      | Логин технической учётной записи 1С                   |
 | `ODATA_PASSWORD`        | Пароль технической учётной записи 1С                  |

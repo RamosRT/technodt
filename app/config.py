@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     printers_json: str = "[]"
     enable_1c_timestamps: bool = True
     print_server_host: str = "10.60.6.11"
+    qr_base_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

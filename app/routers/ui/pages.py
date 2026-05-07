@@ -88,6 +88,13 @@ def _is_truthy(value: str | None) -> bool:
     return value.strip().lower() in {"1", "true", "on", "yes"}
 
 
+def _resolve_qr_server_url(request: Request) -> str:
+    settings = get_settings()
+    if settings.env == "production" and settings.qr_base_url.strip():
+        return settings.qr_base_url.strip().rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
 async def _verify_meta(session: AsyncSession, envelope) -> dict:
     branch_name = None
     if envelope.origin_branch_id:
@@ -947,6 +954,7 @@ async def ui_admin(
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
+    qr_server_url = _resolve_qr_server_url(request)
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -958,6 +966,7 @@ async def ui_admin(
             "branches": branches,
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
+            "qr_server_url": qr_server_url,
             "show_reset": get_settings().env != "production",
             "active_admin_tab": "printers",
             **audit_ctx,
@@ -981,6 +990,7 @@ async def _admin_v2_response(
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
+    qr_server_url = _resolve_qr_server_url(request)
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -992,6 +1002,7 @@ async def _admin_v2_response(
             "branches": branches,
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
+            "qr_server_url": qr_server_url,
             "show_reset": get_settings().env != "production",
             "active_admin_tab": active_tab,
             **audit_ctx,

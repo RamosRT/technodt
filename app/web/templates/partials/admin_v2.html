@@ -165,7 +165,7 @@
                       <button class="btn btn-ghost btn-sm row-menu-item" type="submit">Сменить PIN</button>
                     </form>
                     <form class="inline-form row-menu-form" action="/api/operators/{{ op.id }}/auth-label.pdf" method="get" target="_blank">
-                      <input type="hidden" name="server_url" value="{{ request.base_url|string|trim('/') }}">
+                      <input type="hidden" name="server_url" value="{{ qr_server_url }}">
                       <input class="form-control form-control-sm pin-input" name="password" placeholder="PIN" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" type="password" required>
                       <button class="btn btn-ghost btn-sm row-menu-item" type="submit">QR ТСД (PDF)</button>
                     </form>

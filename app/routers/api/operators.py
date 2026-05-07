@@ -2,10 +2,11 @@ import socket
 import uuid
 from urllib.parse import urlparse, urlunparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin, require_operator
+from app.config import get_settings
 from app.db import get_session
 from app.schemas.operator import OperatorCreate, OperatorOut, OperatorPatch, OperatorSettingsPatch
 from app.services import printing
@@ -33,6 +34,15 @@ def _lan_server_url(server_url: str) -> str:
         except Exception:
             pass
     return urlunparse(parsed)
+
+
+def _resolve_qr_server_url(*, request: Request, requested_server_url: str | None) -> str:
+    settings = get_settings()
+    if settings.env == "production" and settings.qr_base_url.strip():
+        return settings.qr_base_url.strip().rstrip("/")
+
+    candidate = (requested_server_url or "").strip() or str(request.base_url).strip()
+    return _lan_server_url(candidate).rstrip("/")
 
 
 def _mm_to_dots(mm: int, dpi: int = 200) -> int:
@@ -122,8 +132,9 @@ async def remove_operator(
 
 @router.get("/{operator_id}/auth-label.zpl")
 async def operator_auth_label_zpl(
+    request: Request,
     operator_id: uuid.UUID,
-    server_url: str = Query(..., min_length=1),
+    server_url: str | None = Query(default=None),
     password: str = Query(..., min_length=4, max_length=4, pattern=r"^\d{4}$"),
     _admin: None = require_admin(),
     session: AsyncSession = Depends(get_session),
@@ -132,7 +143,8 @@ async def operator_auth_label_zpl(
     op = next((item for item in operators if item.id == operator_id), None)
     if op is None:
         return Response("Оператор не найден", status_code=404)
-    payload = _zpl_text(f"KTLOGIN|{server_url.strip()}|{op.username}|{password}")
+    qr_server_url = _resolve_qr_server_url(request=request, requested_server_url=server_url)
+    payload = _zpl_text(f"KTLOGIN|{qr_server_url}|{op.username}|{password}")
     zpl = "\n".join(
         (
             "^XA",
@@ -151,8 +163,9 @@ async def operator_auth_label_zpl(
 
 @router.get("/{operator_id}/auth-label.pdf")
 async def operator_auth_label_pdf(
+    request: Request,
     operator_id: uuid.UUID,
-    server_url: str = Query(..., min_length=1),
+    server_url: str | None = Query(default=None),
     password: str = Query(..., min_length=4, max_length=4, pattern=r"^\d{4}$"),
     _admin: None = require_admin(),
     session: AsyncSession = Depends(get_session),
@@ -161,8 +174,9 @@ async def operator_auth_label_pdf(
     op = next((item for item in operators if item.id == operator_id), None)
     if op is None:
         return Response("Оператор не найден", status_code=404)
+    qr_server_url = _resolve_qr_server_url(request=request, requested_server_url=server_url)
     pdf = await printing.render_operator_auth_label_pdf(
-        server_url=_lan_server_url(server_url),
+        server_url=qr_server_url,
         username=op.username,
         password=password,
     )
