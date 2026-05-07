@@ -62,9 +62,12 @@
 
   {% if env_status == 'draft' %}
   <div class="mt-16 mb-12 flex gap-8">
+    {% set missing_settings = not operator_row or not operator_row.default_signer_sender_id or not operator_row.default_branch_id %}
     <button class="btn btn-primary"
             onclick="document.getElementById('seal-modal').removeAttribute('hidden')"
-            {% if not documents %}disabled title="Нет документов"{% endif %}>
+            {% if not documents %}disabled title="Нет документов"
+            {% elif missing_settings %}disabled title="Настройте филиал и подписанта в Настройках"
+            {% endif %}>
       <i data-lucide="lock-keyhole"></i> Запечатать
     </button>
     <span class="text-muted" style="align-self:center">Отсканируйте документы или ШК черновика конверта</span>
@@ -166,34 +169,16 @@
   <div class="modal-title">Запечатать конверт</div>
   <form hx-post="/ui/envelopes/{{ envelope.id }}/seal"
         hx-target="#envelope-card" hx-swap="outerHTML">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-row">
-        <label>Отправитель (подписант)</label>
-        <select name="signer_sender_id" class="form-control" required>
-          <option value="">— выберите —</option>
-          {% for s in signers %}
-          <option value="{{ s.id }}">{{ s.last_name }} {{ s.first_name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Получатель (подписант)</label>
-        <select name="signer_receiver_id" class="form-control" required>
-          <option value="">— выберите —</option>
-          {% for s in signers %}
-          <option value="{{ s.id }}">{{ s.last_name }} {{ s.first_name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Филиал-отправитель</label>
-        <select name="origin_branch_id" class="form-control" required>
-          <option value="">— выберите —</option>
-          {% for b in branches %}
-          <option value="{{ b.id }}">{{ b.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
+    <input type="hidden" name="signer_sender_id" value="{{ operator_row.default_signer_sender_id }}">
+    <input type="hidden" name="origin_branch_id" value="{{ operator_row.default_branch_id }}">
+    <div class="form-row">
+      <label>Подписант № 2 (экспедитор)</label>
+      <select name="signer_receiver_id" class="form-control" required>
+        <option value="">— выберите —</option>
+        {% for s in signers %}
+        <option value="{{ s.id }}">{{ s.last_name }} {{ s.first_name }}</option>
+        {% endfor %}
+      </select>
     </div>
     <div class="form-row">
       <label>Примечания</label>
