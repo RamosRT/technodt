@@ -2,6 +2,8 @@
 import asyncio
 import base64
 import io
+import subprocess
+import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -167,6 +169,70 @@ def _win32print_send(share_name: str, data: bytes, *, host: str) -> None:
         win32print.ClosePrinter(handle)
 
 
+def _sumatra_print_pdf(
+    pdf_bytes: bytes,
+    *,
+    sumatra_exe: str,
+    temp_dir: str,
+    printer_name: str,
+    timeout_seconds: int,
+) -> None:
+    from app.exceptions import AppError
+
+    sumatra_path = Path(sumatra_exe)
+    if not sumatra_path.exists():
+        raise AppError("Не найден SumatraPDF для печати A4", status_code=500, code="print_engine_missing")
+
+    temp_path = Path(temp_dir)
+    temp_path.mkdir(parents=True, exist_ok=True)
+
+    tmp_file_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=".pdf",
+            prefix="inventory_",
+            dir=str(temp_path),
+            delete=False,
+        ) as tmp_file:
+            tmp_file.write(pdf_bytes)
+            tmp_file.flush()
+            tmp_file_path = tmp_file.name
+
+        command = [
+            str(sumatra_path),
+            "-print-to",
+            printer_name,
+            "-silent",
+            "-exit-on-print",
+            tmp_file_path,
+        ]
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=max(timeout_seconds, 1),
+            check=False,
+        )
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        output = (stderr or stdout).strip()
+        # SumatraPDF 3.6.x may return code 1 with only ParseFlags diagnostics
+        # even when print job is accepted by the spooler.
+        benign_rc1 = result.returncode == 1 and "ParseFlags:" in stdout and not stderr
+        if result.returncode != 0 and not benign_rc1:
+            raise AppError(
+                f"Не удалось отправить опись на принтер: {output or 'ошибка SumatraPDF'}",
+                status_code=502,
+                code="printer_unavailable",
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise AppError("Таймаут отправки описи на принтер", status_code=504, code="printer_timeout") from exc
+    finally:
+        if tmp_file_path:
+            Path(tmp_file_path).unlink(missing_ok=True)
+
+
 async def send_inventory_to_a4_printer(
     session: AsyncSession,
     envelope_id: uuid.UUID,
@@ -178,11 +244,16 @@ async def send_inventory_to_a4_printer(
         raise AppError("Опись доступна только для A4-принтера", status_code=400, code="printer_not_a4")
     pdf_bytes = await render_inventory_pdf(session, envelope_id)
     settings = get_settings()
+    printer_path = printer.share_name
+    if settings.print_server_host and not printer_path.startswith("\\\\"):
+        printer_path = rf"\\{settings.print_server_host}\{printer_path}"
     await asyncio.to_thread(
-        _win32print_send,
-        printer.share_name,
+        _sumatra_print_pdf,
         pdf_bytes,
-        host=settings.print_server_host,
+        sumatra_exe=settings.sumatra_exe_path,
+        temp_dir=settings.print_temp_dir,
+        printer_name=printer_path,
+        timeout_seconds=settings.sumatra_timeout_seconds,
     )
 
 
