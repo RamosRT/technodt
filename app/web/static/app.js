@@ -647,8 +647,61 @@ function editSignerFromAdmin(btn) {
   openModal("admin-edit-modal");
 }
 
+function editPrinterFromAdmin(btn) {
+  const id = btn?.dataset?.id;
+  if (!id) return;
+  const name = btn.dataset.name || "";
+  const kind = btn.dataset.kind || "zpl";
+  const host = btn.dataset.host || "";
+  const port = btn.dataset.port || "";
+  const dpi = btn.dataset.dpi || "";
+  const shareName = btn.dataset.shareName || "";
+  const title = document.getElementById("admin-edit-title");
+  const body = document.getElementById("admin-edit-body");
+  if (!title || !body) return;
+  title.textContent = "Изменить принтер";
+  body.innerHTML = `
+    <form hx-patch="/ui/admin/printers/${id}" hx-target="#main-area" onsubmit="closeModal('admin-edit-modal')">
+      <div class="admin-printer-form-grid">
+        <div class="form-row">
+          <label>Название</label>
+          <input class="form-control" name="name" value="${escapeAttr(name)}" required autofocus>
+        </div>
+        <div class="form-row">
+          <label>Тип</label>
+          <select class="form-control" name="kind">
+            <option value="zpl" ${kind === "zpl" ? "selected" : ""}>ZPL</option>
+            <option value="a4" ${kind === "a4" ? "selected" : ""}>A4</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>IP-адрес (ZPL)</label>
+          <input class="form-control" name="host" value="${escapeAttr(host)}" placeholder="10.60.6.47">
+        </div>
+        <div class="form-row">
+          <label>Порт / DPI</label>
+          <div class="admin-form-pair">
+            <input class="form-control" name="port" value="${escapeAttr(port)}" placeholder="9100" type="number">
+            <input class="form-control" name="dpi" value="${escapeAttr(dpi)}" placeholder="200" type="number">
+          </div>
+        </div>
+        <div class="form-row admin-form-wide">
+          <label>Share name (A4)</label>
+          <input class="form-control" name="share_name" value="${escapeAttr(shareName)}" placeholder="[КЗН] HP LaserJet ...">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('admin-edit-modal')">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>`;
+  if (window.htmx) htmx.process(body);
+  openModal("admin-edit-modal");
+}
+
 window.editBranchFromAdmin = editBranchFromAdmin;
 window.editSignerFromAdmin = editSignerFromAdmin;
+window.editPrinterFromAdmin = editPrinterFromAdmin;
 window.printZplLabel = printZplLabel;
 window.printA4Inventory = printA4Inventory;
 
@@ -660,6 +713,8 @@ document.addEventListener("click", (e) => {
     editBranchFromAdmin(trigger);
   } else if (trigger.dataset.adminEdit === "signer") {
     editSignerFromAdmin(trigger);
+  } else if (trigger.dataset.adminEdit === "printer") {
+    editPrinterFromAdmin(trigger);
   }
 });
 

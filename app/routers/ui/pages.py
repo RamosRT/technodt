@@ -1267,6 +1267,35 @@ async def ui_admin_toggle_printer(
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
 
 
+@router.patch("/ui/admin/printers/{printer_id}", response_class=HTMLResponse)
+async def ui_admin_patch_printer(
+    request: Request,
+    printer_id: str,
+    name: str = Form(default=""),
+    kind: str = Form(default=""),
+    host: str = Form(default=""),
+    port: str = Form(default=""),
+    dpi: str = Form(default=""),
+    share_name: str = Form(default=""),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    patch = PrinterPatch(
+        name=name.strip() or None,
+        kind=kind if kind in {"zpl", "a4"} else None,  # type: ignore[arg-type]
+        host=host.strip() or None,
+        port=int(port) if port.strip().isdigit() else None,
+        dpi=int(dpi) if dpi.strip().isdigit() else None,
+        share_name=share_name.strip() or (host.strip() if kind == "a4" else None),
+    )
+    await printer_svc.patch_printer(session, printer_id, patch)
+    await session.commit()
+    return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin)
+
+
 @router.post("/ui/admin/printers/{printer_id}/delete", response_class=HTMLResponse)
 async def ui_admin_delete_printer(
     request: Request,

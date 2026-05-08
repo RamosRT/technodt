@@ -108,12 +108,12 @@ Themes [
 # You're not expected to change those manually
 UiLanguage = ru
 WindowState = 1
-WindowPos = 0 0 0 0
+WindowPos = 558 0 803 1040
 FileStates [
 ]
 SessionData [
 ]
 TimeOfLastUpdateCheck = 0 0
-OpenCountWeek = 800
+OpenCountWeek = 801
 
 # Settings below are not recognized by the current version

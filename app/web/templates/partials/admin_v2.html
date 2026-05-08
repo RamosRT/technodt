@@ -86,6 +86,18 @@
                 </form>
               </td>
               <td>
+                <button class="btn btn-ghost btn-sm"
+                        type="button"
+                        data-admin-edit="printer"
+                        data-id="{{ p.id }}"
+                        data-name="{{ p.name }}"
+                        data-kind="{{ p.kind }}"
+                        data-host="{{ p.host or '' }}"
+                        data-port="{{ p.port or '' }}"
+                        data-dpi="{{ p.dpi or '' }}"
+                        data-share-name="{{ p.share_name or '' }}">
+                  <i data-lucide="pencil"></i>
+                </button>
                 <button class="btn btn-danger btn-sm"
                         hx-post="/ui/admin/printers/{{ p.id }}/delete"
                         hx-target="#main-area"

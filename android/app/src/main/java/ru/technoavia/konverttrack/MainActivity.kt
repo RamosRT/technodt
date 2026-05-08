@@ -1676,15 +1676,11 @@ private fun RegisterScreen(
                         if (a4PrinterId.isBlank()) {
                             printError = "Выберите A4-принтер в сервисном меню"
                         } else {
+                            printError = null
+                            printMessage = "Опись отправлена на принтер"
                             scope.launch {
-                                printMessage = null
-                                printError = null
                                 runCatching {
                                     ApiClient.envelopeApi(serverUrl).printInventory(envelope.id, a4PrinterId)
-                                }.onSuccess {
-                                    printMessage = "Опись отправлена на принтер"
-                                }.onFailure { err ->
-                                    printError = apiErrorText(err)
                                 }
                             }
                         }
