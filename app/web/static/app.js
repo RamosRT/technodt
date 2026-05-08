@@ -398,6 +398,34 @@ function finishVerify(force) {
   });
 }
 
+async function printZplLabel(envelopeId, printerId) {
+  const normalizedPrinterId = String(printerId || "").trim();
+  if (!normalizedPrinterId) {
+    showToast("Выберите ZPL-принтер в Настройках", "error");
+    return;
+  }
+  try {
+    const response = await fetch(
+      `/api/envelopes/${encodeURIComponent(envelopeId)}/print/label/send?printer_id=${encodeURIComponent(normalizedPrinterId)}`,
+      { method: "POST" }
+    );
+    if (!response.ok) {
+      let detail = "";
+      try {
+        const data = await response.json();
+        detail = data?.detail || "";
+      } catch (_) {
+        detail = "";
+      }
+      showToast(detail || "Не удалось отправить этикетку на принтер", "error");
+      return;
+    }
+    showToast("Этикетка отправлена на принтер", "success");
+  } catch (_) {
+    showToast("Ошибка сети при отправке на принтер", "error");
+  }
+}
+
 // ─── Mode switching ─────────────────────────────────────────────
 function setMode(mode) {
   App.mode = mode;
@@ -593,6 +621,7 @@ function editSignerFromAdmin(btn) {
 
 window.editBranchFromAdmin = editBranchFromAdmin;
 window.editSignerFromAdmin = editSignerFromAdmin;
+window.printZplLabel = printZplLabel;
 
 document.addEventListener("click", (e) => {
   const trigger = e.target?.closest?.("[data-admin-edit]");

@@ -78,7 +78,11 @@
   <div class="print-actions">
     <a class="btn btn-dark" href="/api/envelopes/{{ envelope.id }}/print/inventory" target="_blank"><i data-lucide="file-text"></i> Опись (PDF)</a>
     <a class="btn btn-secondary" href="/api/envelopes/{{ envelope.id }}/print/label" target="_blank"><i data-lucide="file-barcode"></i> Этикетка (PDF)</a>
-    <a class="btn btn-ghost" href="/api/envelopes/{{ envelope.id }}/print/label?format=zpl" target="_blank"><i data-lucide="printer"></i> Этикетка (ZPL)</a>
+    <button class="btn btn-ghost"
+            type="button"
+            onclick="printZplLabel('{{ envelope.id }}', '{{ operator_row.assigned_zpl_printer_id if operator_row else '' }}')">
+      <i data-lucide="printer"></i> Этикетка (ZPL)
+    </button>
   </div>
   {% endif %}
 

@@ -833,6 +833,9 @@ async def ui_verify_start_by_barcode(
     except AppError as e:
         return templates.TemplateResponse(request, "partials/verify_prompt.html", {"error": e.detail})
 
+    operator_row = (
+        await session.execute(select(Operator).where(Operator.username == operator))
+    ).scalar_one_or_none()
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
     meta = await _verify_meta(session, envelope)
     return templates.TemplateResponse(request, "partials/verify_card.html", {
@@ -840,6 +843,7 @@ async def ui_verify_start_by_barcode(
         "documents": envelope.documents,
         "scanned_count": scanned,
         "all_scanned": scanned == len(envelope.documents),
+        "operator_row": operator_row,
         **meta,
     })
 
@@ -864,6 +868,9 @@ async def ui_verify_scan(
     for doc in envelope.documents:
         doc.just_scanned = (doc.id == just_scanned_id)
 
+    operator_row = (
+        await session.execute(select(Operator).where(Operator.username == operator))
+    ).scalar_one_or_none()
     scanned = sum(1 for d in envelope.documents if d.scanned_at_verification)
     warning = None
     if result.reason == "not_in_envelope":
@@ -878,6 +885,7 @@ async def ui_verify_scan(
         "scanned_count": scanned,
         "all_scanned": scanned == len(envelope.documents),
         "scan_warning": warning,
+        "operator_row": operator_row,
         **meta,
     })
 
@@ -915,10 +923,14 @@ async def ui_verify_finish(
     except AppError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e.detail}</div>', status_code=e.status_code)
 
+    operator_row = (
+        await session.execute(select(Operator).where(Operator.username == operator))
+    ).scalar_one_or_none()
     return templates.TemplateResponse(request, "partials/verify_done.html", {
         "envelope": envelope,
         "documents": envelope.documents,
         "missing_count": len(result.missing_docs),
+        "operator_row": operator_row,
     })
 
 
