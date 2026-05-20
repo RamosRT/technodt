@@ -23,7 +23,7 @@ from app.routers.api import printers as printers_api
 from app.routers.api import verify as verify_api
 from app.routers.ui import pages as ui_pages
 from app.services.odata import OneCClient
-from app.services.onec_sync import run_incremental_sync
+from app.services.onec_sync import _sync_lock, run_incremental_sync
 
 _STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -42,31 +42,39 @@ async def lifespan(app: FastAPI):
     app.state.one_c = client
     app.dependency_overrides[get_one_c_client] = lambda: app.state.one_c
 
-    scheduler = AsyncIOScheduler()
-
-    async def _scheduled_sync() -> None:
-        factory = get_session_factory()
-        async with factory() as session:
-            try:
-                await run_incremental_sync(client, session)
-            except Exception as exc:
-                log.error("scheduled incremental sync failed: %s", exc)
-
+    scheduler = None
     if s.sync_schedule_hours > 0:
+        scheduler = AsyncIOScheduler()
+
+        async def _scheduled_sync() -> None:
+            if _sync_lock.locked():
+                log.warning("scheduled sync: lock busy, skipping")
+                return
+            async with _sync_lock:
+                factory = get_session_factory()
+                async with factory() as session:
+                    try:
+                        await run_incremental_sync(client, session)
+                    except Exception as exc:
+                        log.error("scheduled incremental sync failed: %s", exc)
+
         scheduler.add_job(
             _scheduled_sync,
             "interval",
             hours=s.sync_schedule_hours,
             id="incremental_sync",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
         )
-
-    scheduler.start()
-    app.state.scheduler = scheduler
+        scheduler.start()
+        app.state.scheduler = scheduler
 
     try:
         yield
     finally:
-        scheduler.shutdown(wait=False)
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         await client.aclose()
 
 

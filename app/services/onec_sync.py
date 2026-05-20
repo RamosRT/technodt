@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import UTC, date, datetime
@@ -14,6 +15,8 @@ log = logging.getLogger(__name__)
 
 PAGE_SIZE = 1000
 SYNC_STATUS_KEY = "onec_sync_status"
+
+_sync_lock = asyncio.Lock()
 
 
 def _parse_invoice_row(row: dict[str, Any]) -> dict[str, Any]:
