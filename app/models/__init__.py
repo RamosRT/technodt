@@ -3,6 +3,7 @@ from .base import Base
 from .branch import Branch
 from .envelope import Envelope, EnvelopeStatus
 from .envelope_document import EnvelopeDocument
+from .onec_document import OneCDocument
 from .onec_mark_log import OneCMarkLog
 from .operator import Operator
 from .printer import Printer
@@ -16,6 +17,7 @@ __all__ = [
     "Envelope",
     "EnvelopeStatus",
     "EnvelopeDocument",
+    "OneCDocument",
     "AuditLog",
     "Operator",
     "Printer",
