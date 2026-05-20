@@ -19,6 +19,7 @@ dependencies = [
     "python-barcode[images]>=0.15",
     "qrcode[pil]>=7.4",
     "pywin32>=306; platform_system == 'Windows'",
+    "apscheduler>=3.10,<4",
 ]
 
 [project.optional-dependencies]
