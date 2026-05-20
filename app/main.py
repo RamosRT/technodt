@@ -22,6 +22,7 @@ from app.routers.api import operators as operators_api
 from app.routers.api import report as report_api
 from app.routers.api import printers as printers_api
 from app.routers.api import verify as verify_api
+from app.routers.api import webhooks as webhooks_api
 from app.routers.ui import pages as ui_pages
 from app.services.odata import OneCClient
 from app.services.onec_sync import _sync_lock, run_incremental_sync
@@ -94,4 +95,5 @@ app.include_router(audit_api.router)
 app.include_router(printers_api.router)
 app.include_router(onec_sync_api.router)
 app.include_router(report_api.router)
+app.include_router(webhooks_api.router)
 app.include_router(ui_pages.router)
