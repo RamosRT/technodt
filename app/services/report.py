@@ -1,3 +1,5 @@
+import csv
+import io
 import uuid
 from datetime import date
 from typing import Any
@@ -6,7 +8,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.models import Branch, Envelope, EnvelopeDocument, EnvelopeStatus, OneCDocument, OneCMarkLog
+from app.models import (
+    Branch,
+    Envelope,
+    EnvelopeDocument,
+    EnvelopeStatus,
+    OneCDocument,
+    OneCMarkLog,
+)
 from app.services.odata import PROP_REGISTERED, PROP_SEALED, PROP_VERIFIED
 
 
@@ -45,7 +54,7 @@ async def list_report_documents(
             .where(
                 and_(
                     OneCMarkLog.property_key == prop_key,
-                    OneCMarkLog.status == "ok",
+                    OneCMarkLog.status == "success",
                 )
             )
             .group_by(OneCMarkLog.doc_guid)
@@ -117,7 +126,6 @@ async def list_report_documents(
     items: list[dict[str, Any]] = []
     for row in rows:
         doc: OneCDocument = row.OneCDocument
-        env_doc: EnvelopeDocument | None = row.EnvelopeDocument
         env: Envelope | None = row.Envelope
         items.append(
             {
@@ -150,3 +158,66 @@ async def list_report_documents(
             }
         )
     return items, total
+
+
+def build_report_documents_csv(items: list[dict[str, Any]]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(
+        [
+            "Тип",
+            "Номер",
+            "Дата",
+            "Клиент",
+            "ЭДО",
+            "Зарегистрирован",
+            "Конверт",
+            "Запечатан",
+            "Отправитель",
+            "Оператор",
+            "Проверен",
+            "Получатель",
+            "Расхождение",
+            "Отм.1С рег",
+            "Отм.1С печать",
+            "Отм.1С верифик.",
+            "ТехноАрхив дата",
+            "ТехноАрхив путь",
+            "ТехноАрхив URL",
+        ]
+    )
+
+    def fmt(value: Any) -> str:
+        if value is None:
+            return ""
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        if isinstance(value, bool):
+            return "Да" if value else ""
+        return str(value)
+
+    for row in items:
+        writer.writerow(
+            [
+                fmt(row.get("doc_type")),
+                fmt(row.get("number")),
+                fmt(row.get("doc_date")),
+                fmt(row.get("partner_name")),
+                fmt(row.get("is_edo")),
+                fmt(row.get("registered_at")),
+                fmt(row.get("envelope_number")),
+                fmt(row.get("sealed_at")),
+                fmt(row.get("origin_branch")),
+                fmt(row.get("created_by")),
+                fmt(row.get("verified_at")),
+                fmt(row.get("destination_branch")),
+                fmt(row.get("has_discrepancy")),
+                fmt(row.get("mark_registered_at")),
+                fmt(row.get("mark_sealed_at")),
+                fmt(row.get("mark_verified_at")),
+                fmt(row.get("archive_processed_at")),
+                fmt(row.get("archive_storage_path")),
+                fmt(row.get("archive_download_url")),
+            ]
+        )
+    return output.getvalue()

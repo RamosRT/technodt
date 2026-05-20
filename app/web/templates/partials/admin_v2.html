@@ -318,6 +318,9 @@
           <p>Служебные параметры и тестовые операции.</p>
         </div>
       </header>
+      {% if system_notice %}
+      <div class="alert alert-{{ system_notice.kind }}">{{ system_notice.text }}</div>
+      {% endif %}
       <div class="admin-system-grid">
         <div class="admin-system-card">
           <i data-lucide="clock-3"></i>
@@ -329,6 +332,32 @@
             <input type="hidden" name="enabled" value="{% if enable_1c_timestamps %}false{% else %}true{% endif %}">
             <button class="admin-switch {% if enable_1c_timestamps %}is-on{% endif %}" type="submit" aria-label="Переключить отметки времени в 1С">
               <span></span>
+            </button>
+          </form>
+        </div>
+        <div class="admin-system-card admin-system-card-sync">
+          <i data-lucide="database-zap"></i>
+          <div>
+            <strong>Локальная база документов 1С</strong>
+            <span>
+              {% if sync_status.state == "running" %}
+                Выполняется {{ "начальное заполнение" if sync_status.mode == "initial" else "инкрементальная синхронизация" }}
+              {% elif sync_status.state == "done" %}
+                Последняя синхронизация завершена: {{ sync_status.total|default(0) }} документов, ошибок {{ sync_status.errors|default(0) }}
+              {% elif sync_status.state == "error" %}
+                Ошибка синхронизации: {{ sync_status.error|default("см. лог службы") }}
+              {% else %}
+                Начальное заполнение ещё не запускалось
+              {% endif %}
+            </span>
+            <small>Стартовая дата: {{ sync_initial_from_date }}</small>
+          </div>
+          <form class="admin-system-action"
+                hx-post="/ui/admin/sync/initial"
+                hx-target="#main-area"
+                hx-confirm="Запустить начальное заполнение локальной базы документов из 1С? Операция может занять длительное время.">
+            <button class="btn btn-primary" type="submit" {% if sync_status.state == "running" %}disabled{% endif %}>
+              <i data-lucide="download-cloud"></i> Начальное заполнение
             </button>
           </form>
         </div>

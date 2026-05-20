@@ -14,5 +14,6 @@ def test_all_models_registered():
         "printers",
         "system_settings",
         "onec_mark_logs",
+        "onec_documents",
     }
     assert {s.value for s in EnvelopeStatus} == {"draft", "sealed", "verified", "verified_with_discrepancy"}

@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -52,9 +53,21 @@ INVOICE_SYNC_SELECT = (
     "kzvСсылкаНаКопию",
     "ДокументОснование",
     "ДокументОснование_Type",
+    "Партнер/Description",
+    "Партнер/НаименованиеПолное",
 )
 
-INVOICE_PARTNER_EXPAND = "Партнер($select=НаименованиеПолное)"
+INVOICE_SYNC_EXPAND = "Партнер"
+
+
+def _odata_query(params: dict[str, str]) -> str:
+    # 1C OData is sensitive to query encoding in some installations:
+    # keep OData syntax characters readable and encode spaces as %20, not "+".
+    safe = "$,/'():"
+    return "&".join(
+        f"{quote(key, safe=safe)}={quote(value, safe=safe)}"
+        for key, value in params.items()
+    )
 
 PROP_REGISTERED = uuid.UUID("bda8ba09-4787-11f1-92ca-00155d060d01")
 PROP_SEALED = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
@@ -306,28 +319,37 @@ class OneCClient:
         skip: int,
         top: int,
         include_deleted: bool = False,
+        server_date_filter: bool = True,
     ) -> list[dict[str, Any]]:
-        filters = [f"Date ge datetime'{date_from.isoformat()}T00:00:00'"]
-        if date_to is not None:
+        filters: list[str] = []
+        if server_date_filter:
+            filters.append(f"Date ge datetime'{date_from.isoformat()}T00:00:00'")
+        if server_date_filter and date_to is not None:
             filters.append(f"Date le datetime'{date_to.isoformat()}T23:59:59'")
         if not include_deleted:
             filters.append("DeletionMark eq false")
         params = {
             "$format": "json",
+            "$expand": INVOICE_SYNC_EXPAND,
             "$select": ",".join(INVOICE_SYNC_SELECT),
-            "$expand": INVOICE_PARTNER_EXPAND,
-            "$filter": " and ".join(filters),
-            "$skip": str(skip),
-            "$top": str(top),
         }
+        if filters:
+            params["$filter"] = " and ".join(filters)
+        params["$skip"] = str(skip)
+        params["$top"] = str(top)
         try:
-            resp = await self._client.get("/Document_СчетФактураВыданный", params=params)
+            resp = await self._client.get(
+                f"/Document_СчетФактураВыданный?{_odata_query(params)}"
+            )
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
             raise OneCUnavailable("1С недоступна при синхронизации") from e
         if resp.status_code == 401:
             raise OneCUnavailable("Не удалось авторизоваться в 1С")
         if resp.status_code != 200:
-            raise OneCUnavailable(f"1С вернула {resp.status_code} при синхронизации")
+            detail = resp.text[:500].replace("\r", " ").replace("\n", " ")
+            raise OneCUnavailable(
+                f"1С вернула {resp.status_code} при синхронизации: {detail}"
+            )
         data = resp.json()
         return data.get("value", [])
 

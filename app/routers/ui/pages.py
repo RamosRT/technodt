@@ -1,11 +1,12 @@
 """UI routes — renders Jinja2 templates for the single-page HTMX frontend."""
+import logging
 import uuid
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Cookie, Depends, Form, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select, text
@@ -16,7 +17,6 @@ import app.services.envelopes as env_svc
 import app.services.printers as printer_svc
 import app.services.system_settings as settings_svc
 import app.services.verify as verify_svc
-from app.services.report import list_report_documents
 from app.auth import get_is_admin
 from app.config import get_settings
 from app.db import get_session, get_session_factory
@@ -38,6 +38,8 @@ from app.services import documents as doc_svc
 from app.services import operators as op_svc
 from app.services.odata import OneCClient
 from app.services.onec_marks import fire_seal_marks, fire_verify_marks
+from app.services.onec_sync import _sync_lock, get_sync_status, run_initial_sync
+from app.services.report import list_report_documents
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TMPL_DIR))
@@ -55,6 +57,8 @@ DOCUMENT_STATUS_LABELS = {
     "missing": "Недостача",
     "draft": "Черновик",
 }
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ui"])
 
@@ -1051,6 +1055,7 @@ async def ui_admin(
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
+    sync_status = await get_sync_status(session)
     qr_server_url = _resolve_qr_server_url(request)
     return templates.TemplateResponse(
         request,
@@ -1063,6 +1068,8 @@ async def ui_admin(
             "branches": branches,
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
+            "sync_status": sync_status,
+            "sync_initial_from_date": get_settings().sync_initial_from_date,
             "qr_server_url": qr_server_url,
             "show_reset": get_settings().env != "production",
             "active_admin_tab": "printers",
@@ -1079,6 +1086,7 @@ async def _admin_v2_response(
     operator: str | None,
     is_admin: bool,
     active_tab: str = "printers",
+    system_notice: dict | None = None,
 ):
     operators = await op_svc.list_operators(session)
     printers = await printer_svc.list_printers(session, active_only=False)
@@ -1087,6 +1095,7 @@ async def _admin_v2_response(
     branches = await dict_svc.list_branches(session, only_active=True)
     signers = await dict_svc.list_signers(session, only_active=True)
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
+    sync_status = await get_sync_status(session)
     qr_server_url = _resolve_qr_server_url(request)
     return templates.TemplateResponse(
         request,
@@ -1099,6 +1108,9 @@ async def _admin_v2_response(
             "branches": branches,
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
+            "sync_status": sync_status,
+            "sync_initial_from_date": get_settings().sync_initial_from_date,
+            "system_notice": system_notice,
             "qr_server_url": qr_server_url,
             "show_reset": get_settings().env != "production",
             "active_admin_tab": active_tab,
@@ -1403,6 +1415,61 @@ async def ui_admin_toggle_1c_timestamps(
     await settings_svc.set_1c_timestamps_enabled(session, _is_truthy(enabled))
     await session.commit()
     return await _admin_v2_response(request, session, operator=operator, is_admin=is_admin, active_tab="system")
+
+
+@router.post("/ui/admin/sync/initial", response_class=HTMLResponse)
+async def ui_admin_start_initial_sync(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+    client: OneCClient = Depends(get_one_c_client),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    if _sync_lock.locked():
+        return await _admin_v2_response(
+            request,
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            active_tab="system",
+            system_notice={
+                "kind": "info",
+                "text": "Синхронизация уже выполняется. Проверьте статус позже.",
+            },
+        )
+
+    settings = get_settings()
+    date_from = settings.sync_initial_from_date
+    factory = get_session_factory()
+
+    async def _run() -> None:
+        if _sync_lock.locked():
+            return
+        async with _sync_lock:
+            async with factory() as sync_session:
+                try:
+                    await run_initial_sync(client, sync_session, date_from)
+                except Exception:
+                    log.exception("initial sync failed from UI")
+
+    background_tasks.add_task(_run)
+    return await _admin_v2_response(
+        request,
+        session,
+        operator=operator,
+        is_admin=is_admin,
+        active_tab="system",
+        system_notice={
+            "kind": "success",
+            "text": (
+                f"Начальное заполнение запущено с даты {date_from}. "
+                "Статус обновится после перезагрузки панели."
+            ),
+        },
+    )
 
 
 @router.delete("/ui/operators/{operator_id}", response_class=HTMLResponse)

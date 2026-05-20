@@ -31,6 +31,7 @@ async def truncate_tables(test_engine):
     async with test_engine.begin() as conn:
         for tbl in (
             "onec_mark_logs",
+            "onec_documents",
             "audit_log",
             "envelope_documents",
             "envelopes",

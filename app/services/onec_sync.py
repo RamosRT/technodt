@@ -31,9 +31,12 @@ def _parse_invoice_row(row: dict[str, Any]) -> dict[str, Any]:
     partner_obj = row.get("Партнер")
     partner_name: str | None = None
     if isinstance(partner_obj, dict):
-        raw = partner_obj.get("НаименованиеПолное")
+        raw = partner_obj.get("НаименованиеПолное") or partner_obj.get("Description")
         partner_name = str(raw).strip() if raw else None
         partner_name = partner_name or None
+    if partner_name is None:
+        raw = row.get("Контрагент")
+        partner_name = str(raw).strip() if raw else None
 
     return {
         "guid": uuid.UUID(str(guid_raw)),

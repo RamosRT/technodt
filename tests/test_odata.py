@@ -8,7 +8,14 @@ import pytest
 import respx
 
 from app.exceptions import DocumentNotInOneC, OneCUnavailable
-from app.services.odata import KNOWN_DOC_TYPES, SELECT_FIELDS, OneCClient, normalize_document
+from app.services.odata import (
+    INVOICE_SYNC_SELECT,
+    KNOWN_DOC_TYPES,
+    SELECT_FIELDS,
+    OneCClient,
+    _odata_query,
+    normalize_document,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "odata"
 
@@ -115,6 +122,15 @@ def test_normalize_sf_without_related_returns_none():
     assert n.related_realization_ref is None
 
 
+def test_odata_query_keeps_1c_filter_spaces_as_percent20():
+    assert _odata_query({"$filter": "Date ge datetime'2023-01-01T00:00:00'"}) == (
+        "$filter=Date%20ge%20datetime'2023-01-01T00:00:00'"
+    )
+    query = _odata_query({"$select": "Партнер/Description,Партнер/НаименованиеПолное"})
+    assert "%2F" not in query
+    assert "+" not in query
+
+
 @pytest.mark.asyncio
 async def test_lookup_with_related_fills_related_fields(odata_client, base_url):
     guid = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -211,3 +227,68 @@ async def test_lookup_transfer_fetches_receiver_via_navigation_endpoint(odata_cl
         n = await odata_client.lookup_document_with_related(guid)
     assert n.partner_name == "Склад КАЗ-01"
     assert n.raw_payload.get("СкладПолучатель", {}).get("Description") == "Склад КАЗ-01"
+
+
+@pytest.mark.asyncio
+async def test_fetch_invoices_page_uses_partner_expand_and_date_filter(odata_client, base_url):
+    with respx.mock(base_url=base_url) as mock:
+        route = mock.get(
+            "/Document_СчетФактураВыданный",
+            params={
+                "$format": "json",
+                "$expand": "Партнер",
+                "$select": ",".join(INVOICE_SYNC_SELECT),
+                "$filter": "Date ge datetime'2023-01-01T00:00:00' and DeletionMark eq false",
+                "$skip": "0",
+                "$top": "1000",
+            },
+        ).respond(200, json={"value": [{"Ref_Key": "22222222-2222-2222-2222-222222222222"}]})
+        rows = await odata_client.fetch_invoices_page(
+            date_from=_date(2023, 1, 1),
+            date_to=None,
+            skip=0,
+            top=1000,
+        )
+    assert route.called
+    assert rows == [{"Ref_Key": "22222222-2222-2222-2222-222222222222"}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_invoices_page_can_disable_server_date_filter(odata_client, base_url):
+    with respx.mock(base_url=base_url) as mock:
+        route = mock.get(
+            "/Document_СчетФактураВыданный",
+            params={
+                "$format": "json",
+                "$expand": "Партнер",
+                "$select": ",".join(INVOICE_SYNC_SELECT),
+                "$filter": "DeletionMark eq false",
+                "$skip": "1000",
+                "$top": "1000",
+            },
+        ).respond(200, json={"value": []})
+        rows = await odata_client.fetch_invoices_page(
+            date_from=_date(2023, 1, 1),
+            date_to=None,
+            skip=1000,
+            top=1000,
+            server_date_filter=False,
+        )
+    assert route.called
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_invoices_page_includes_1c_error_body(odata_client, base_url):
+    with respx.mock(base_url=base_url) as mock:
+        mock.get("/Document_СчетФактураВыданный").respond(
+            400,
+            text="Bad query: unknown field",
+        )
+        with pytest.raises(OneCUnavailable, match="unknown field"):
+            await odata_client.fetch_invoices_page(
+                date_from=_date(2023, 1, 1),
+                date_to=None,
+                skip=0,
+                top=1000,
+            )

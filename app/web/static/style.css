@@ -2772,6 +2772,11 @@ body.is-login .main-content::after {
   margin-left: auto;
 }
 
+.admin-system-action {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .admin-system-card strong,
 .admin-system-card span {
   display: block;
@@ -2780,6 +2785,17 @@ body.is-login .main-content::after {
 .admin-system-card span {
   margin-top: 3px;
   color: #687997;
+}
+
+.admin-system-card small {
+  display: block;
+  margin-top: 6px;
+  color: #8a97ad;
+  font-size: 12px;
+}
+
+.admin-system-card-sync {
+  align-items: flex-start;
 }
 
 .onec-mark-summary {

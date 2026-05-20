@@ -1,29 +1,30 @@
 from datetime import date
-from typing import Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_operator
 from app.db import get_session
 from app.schemas.report import ReportDocumentRow, ReportResponse
-from app.services.report import list_report_documents
+from app.services.report import build_report_documents_csv, list_report_documents
 
 router = APIRouter(prefix="/api/report", tags=["report"])
 
 
 @router.get("/documents", response_model=ReportResponse)
 async def documents_report(
-    _op: str = require_operator(),
-    date_from: Optional[date] = Query(None),
-    date_to: Optional[date] = Query(None),
-    partner: Optional[str] = Query(None),
-    number: Optional[str] = Query(None),
-    only_archived: bool = Query(False),
-    only_without_envelope: bool = Query(False),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),
+    _op: Annotated[str, require_operator()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+    partner: Annotated[str | None, Query()] = None,
+    number: Annotated[str | None, Query()] = None,
+    only_archived: Annotated[bool, Query()] = False,
+    only_without_envelope: Annotated[bool, Query()] = False,
+    format: Annotated[str, Query(pattern="^(json|csv)$")] = "json",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=10000)] = 50,
 ):
     items, total = await list_report_documents(
         session,
@@ -36,6 +37,13 @@ async def documents_report(
         page=page,
         page_size=page_size,
     )
+    if format == "csv":
+        csv_body = build_report_documents_csv(items)
+        return Response(
+            content="\ufeff" + csv_body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="document-report.csv"'},
+        )
     return ReportResponse(
         items=[ReportDocumentRow(**item) for item in items],
         total=total,
