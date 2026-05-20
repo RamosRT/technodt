@@ -16,7 +16,7 @@ from app.exceptions import (
     EnvelopeNotFound,
     InvalidSealPayload,
 )
-from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, Signer
+from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, OneCDocument, Signer
 from app.services.audit import write_event
 from app.services.barcode import doc_barcode_to_guid, generate_envelope_codes
 from app.services.odata import OneCClient
@@ -256,6 +256,25 @@ async def get_by_barcode(session: AsyncSession, barcode: str) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
+async def _lookup_from_local_cache(
+    session: AsyncSession, guid: uuid.UUID
+) -> "NormalizedDocument | None":
+    from app.services.odata import NormalizedDocument
+    doc = await session.get(OneCDocument, guid)
+    if doc is None or doc.is_deleted:
+        return None
+    return NormalizedDocument(
+        entity="Document_СчетФактураВыданный",
+        doc_kind="УКД" if doc.is_correction else "УПД",
+        doc_number=doc.print_number,
+        doc_date=doc.doc_date,
+        related_realization_ref=None,
+        raw_payload={},
+        partner_name=doc.partner_name,
+        related_realization_number=doc.related_realization_number,
+    )
+
+
 async def add_document(
     session: AsyncSession,
     *,
@@ -280,7 +299,16 @@ async def add_document(
     if existing is not None:
         raise DocumentAlreadyInEnvelope("Этот документ уже добавлен в конверт")
 
-    normalized = await one_c.lookup_document_with_related(guid)
+    normalized = await _lookup_from_local_cache(session, guid)
+    if normalized is None:
+        normalized = await one_c.lookup_document_with_related(guid)
+        if normalized.entity == "Document_СчетФактураВыданный" and normalized.partner_name:
+            from sqlalchemy import update
+            await session.execute(
+                update(OneCDocument)
+                .where(OneCDocument.guid == guid)
+                .values(partner_name=normalized.partner_name)
+            )
     doc = EnvelopeDocument(
         envelope_id=envelope.id,
         doc_barcode=barcode,
