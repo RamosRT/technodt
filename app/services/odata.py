@@ -80,7 +80,7 @@ class NormalizedDocument:
     related_realization_date: date | None = None
 
 
-def _parse_odata_date(s: str | None) -> date:
+def parse_odata_date(s: str | None) -> date:
     if not s:
         raise ValueError("missing Date")
     return datetime.fromisoformat(s).date()
@@ -131,7 +131,7 @@ def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocume
         entity=entity,
         doc_kind=kind,
         doc_number=doc_number,
-        doc_date=_parse_odata_date(payload.get("Date")),
+        doc_date=parse_odata_date(payload.get("Date")),
         related_realization_ref=related,
         raw_payload=payload,
         partner_name=str(partner_name).strip() if partner_name else None,
@@ -208,7 +208,7 @@ class OneCClient:
                 if resp.status_code == 200:
                     rp = resp.json()
                     normalized.related_realization_number = str(rp.get("Number", ""))
-                    normalized.related_realization_date = _parse_odata_date(rp.get("Date"))
+                    normalized.related_realization_date = parse_odata_date(rp.get("Date"))
                 else:
                     log.warning("realization lookup %s returned %s", ref.guid, resp.status_code)
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
@@ -351,7 +351,7 @@ class OneCClient:
         if not items:
             return None
         raw = items[0].get("ДатаЗапрета")
-        return _parse_odata_date(raw) if raw else None
+        return parse_odata_date(raw) if raw else None
 
     async def patch_storage_link(
         self,

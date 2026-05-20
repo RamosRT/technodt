@@ -2,12 +2,13 @@ import logging
 import uuid
 from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import OneCDocument, SystemSetting
-from app.services.odata import OneCClient, _parse_odata_date
+from app.services.odata import OneCClient, parse_odata_date
 
 log = logging.getLogger(__name__)
 
@@ -20,17 +21,22 @@ def _parse_invoice_row(row: dict[str, Any]) -> dict[str, Any]:
     if not guid_raw:
         raise ValueError("missing Ref_Key")
 
+    number = str(row.get("Number", ""))
+    if not number:
+        raise ValueError("missing Number")
+
     partner_obj = row.get("Партнер")
     partner_name: str | None = None
     if isinstance(partner_obj, dict):
         raw = partner_obj.get("НаименованиеПолное")
         partner_name = str(raw).strip() if raw else None
+        partner_name = partner_name or None
 
     return {
         "guid": uuid.UUID(str(guid_raw)),
-        "number": str(row.get("Number", "")),
+        "number": number,
         "print_number": str(row.get("ПредставлениеНомера") or row.get("Number", "")),
-        "doc_date": _parse_odata_date(row.get("Date")),
+        "doc_date": parse_odata_date(row.get("Date")),
         "is_correction": bool(row.get("Корректировочный", False)),
         "partner_name": partner_name,
         "is_edo": bool(row.get("ВыставленВЭлектронномВиде", False)),
@@ -68,7 +74,6 @@ async def _set_sync_status(session: AsyncSession, status: dict[str, Any]) -> Non
         index_elements=["key"], set_={"value": stmt.excluded.value}
     )
     await session.execute(stmt)
-    await session.commit()
 
 
 async def get_sync_status(session: AsyncSession) -> dict[str, Any]:
@@ -87,6 +92,7 @@ async def run_initial_sync(
             "started_at": datetime.now(UTC).isoformat(),
         },
     )
+    await session.commit()
     total = 0
     errors = 0
     skip = 0
@@ -104,8 +110,9 @@ async def run_initial_sync(
             for row in rows:
                 try:
                     parsed.append(_parse_invoice_row(row))
-                except Exception as e:
-                    log.warning("skip malformed invoice row: %s", e)
+                except Exception:
+                    ref_key = row.get("Ref_Key", "<unknown>")
+                    log.exception("skip malformed invoice row: Ref_Key=%s", ref_key)
                     errors += 1
             await _upsert_batch(session, parsed)
             await session.commit()
@@ -124,11 +131,13 @@ async def run_initial_sync(
                 "errors": errors,
             },
         )
+        await session.commit()
         log.info("initial sync complete: %d rows, %d errors", total, errors)
     except Exception as e:
         await _set_sync_status(
             session, {"state": "error", "mode": "initial", "error": str(e)}
         )
+        await session.commit()
         raise
 
 
@@ -140,30 +149,60 @@ async def run_incremental_sync(
         log.warning("incremental sync: no change restriction date, skipping")
         return
 
-    today = datetime.now(UTC).date()
+    await _set_sync_status(
+        session,
+        {
+            "state": "running",
+            "mode": "incremental",
+            "started_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    await session.commit()
+
+    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
     skip = 0
     total = 0
-    while True:
-        rows = await client.fetch_invoices_page(
-            date_from=restriction_date,
-            date_to=today,
-            skip=skip,
-            top=PAGE_SIZE,
-            include_deleted=True,
+    errors = 0
+    try:
+        while True:
+            rows = await client.fetch_invoices_page(
+                date_from=restriction_date,
+                date_to=today,
+                skip=skip,
+                top=PAGE_SIZE,
+                include_deleted=True,
+            )
+            if not rows:
+                break
+            parsed: list[dict[str, Any]] = []
+            for row in rows:
+                try:
+                    parsed.append(_parse_invoice_row(row))
+                except Exception:
+                    ref_key = row.get("Ref_Key", "<unknown>")
+                    log.exception("skip malformed invoice row: Ref_Key=%s", ref_key)
+                    errors += 1
+            await _upsert_batch(session, parsed)
+            await session.commit()
+            total += len(parsed)
+            skip += PAGE_SIZE
+            if len(rows) < PAGE_SIZE:
+                break
+        await _set_sync_status(
+            session,
+            {
+                "state": "done",
+                "mode": "incremental",
+                "finished_at": datetime.now(UTC).isoformat(),
+                "total": total,
+                "errors": errors,
+            },
         )
-        if not rows:
-            break
-        parsed: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                parsed.append(_parse_invoice_row(row))
-            except Exception as e:
-                log.warning("skip malformed row in incremental sync: %s", e)
-        await _upsert_batch(session, parsed)
         await session.commit()
-        total += len(parsed)
-        skip += PAGE_SIZE
-        if len(rows) < PAGE_SIZE:
-            break
-
-    log.info("incremental sync complete: %d rows from %s", total, restriction_date)
+        log.info("incremental sync complete: %d rows from %s, %d errors", total, restriction_date, errors)
+    except Exception as e:
+        await _set_sync_status(
+            session, {"state": "error", "mode": "incremental", "error": str(e)}
+        )
+        await session.commit()
+        raise
