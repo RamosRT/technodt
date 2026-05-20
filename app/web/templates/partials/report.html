@@ -1,0 +1,128 @@
+<div class="list-page" id="report-page">
+
+  <form class="filter-bar" hx-get="/ui/report" hx-target="#main-area" hx-swap="innerHTML">
+    <span class="filter-label">Отчёт</span>
+    <label style="display:flex;align-items:center;gap:4px;font-size:.85em">
+      Дата с
+      <input class="filter-input" type="date" name="date_from" value="{{ filters.date_from }}">
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;font-size:.85em">
+      по
+      <input class="filter-input" type="date" name="date_to" value="{{ filters.date_to }}">
+    </label>
+    <input class="filter-input" type="text" name="number" value="{{ filters.number }}"
+           placeholder="Номер документа" style="width:14em">
+    <input class="filter-input" type="text" name="partner" value="{{ filters.partner }}"
+           placeholder="Клиент" style="width:14em">
+    <label style="display:flex;align-items:center;gap:4px;font-size:.85em;cursor:pointer">
+      <input type="checkbox" name="only_archived" value="true"
+             {% if filters.only_archived %}checked{% endif %}>
+      Только в ТехноАрхиве
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;font-size:.85em;cursor:pointer">
+      <input type="checkbox" name="only_without_envelope" value="true"
+             {% if filters.only_without_envelope %}checked{% endif %}>
+      Без конверта
+    </label>
+    <button class="btn-primary" type="submit">
+      <i data-lucide="search"></i> Найти
+    </button>
+    <a class="btn-secondary"
+       href="/api/report/documents?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&number={{ filters.number }}&partner={{ filters.partner }}{% if filters.only_archived %}&only_archived=true{% endif %}{% if filters.only_without_envelope %}&only_without_envelope=true{% endif %}&page_size=10000"
+       target="_blank">
+      <i data-lucide="download"></i> Экспорт JSON
+    </a>
+  </form>
+
+  <div style="padding:4px 0;font-size:.9em;color:#555">
+    Всего: <strong>{{ total }}</strong>
+    &nbsp;·&nbsp; Стр. {{ page }} / {{ pages }}
+  </div>
+
+  <div class="data-table-wrap" style="overflow-x:auto">
+    <table class="data-table" style="min-width:1600px">
+      <thead>
+        <tr>
+          <th>Тип</th>
+          <th>Номер</th>
+          <th>Дата</th>
+          <th>Клиент</th>
+          <th>ЭДО</th>
+          <th>Зарегистрирован</th>
+          <th>Конверт</th>
+          <th>Запечатан</th>
+          <th>Отправитель</th>
+          <th>Оператор</th>
+          <th>Проверен</th>
+          <th>Получатель</th>
+          <th>Расх.</th>
+          <th>Отм.1С рег</th>
+          <th>Отм.1С печать</th>
+          <th>Отм.1С верифик.</th>
+          <th>ТехноАрхив</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in items %}
+        <tr class="{% if r.has_discrepancy %}row-discrepancy{% endif %}">
+          <td><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:#e8edf6;color:#2874b9">{{ r.doc_type }}</span></td>
+          <td style="font-weight:600;color:#1b2848;font-family:monospace;font-size:12px">{{ r.number }}</td>
+          <td style="white-space:nowrap;color:#8895a7">{{ r.doc_date.strftime('%d.%m.%Y') if r.doc_date else '—' }}</td>
+          <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.partner_name or '' }}">{{ r.partner_name or '—' }}</td>
+          <td style="text-align:center">{% if r.is_edo %}<span style="color:#2e7d32;font-weight:700">Да</span>{% endif %}</td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.registered_at.strftime('%d.%m %H:%M') if r.registered_at else '—' }}</td>
+          <td style="font-family:monospace;font-size:12px">{{ r.envelope_number or '—' }}</td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.sealed_at.strftime('%d.%m %H:%M') if r.sealed_at else '—' }}</td>
+          <td style="font-size:12px">{{ r.origin_branch or '—' }}</td>
+          <td style="font-size:11px;color:#8895a7">{{ r.created_by or '—' }}</td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.verified_at.strftime('%d.%m %H:%M') if r.verified_at else '—' }}</td>
+          <td style="font-size:12px">{{ r.destination_branch or '—' }}</td>
+          <td style="text-align:center">
+            {% if r.has_discrepancy %}
+            <span style="color:#cc0c00;font-size:14px" title="Расхождение">⚠</span>
+            {% endif %}
+          </td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.mark_registered_at.strftime('%d.%m %H:%M') if r.mark_registered_at else '' }}</td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.mark_sealed_at.strftime('%d.%m %H:%M') if r.mark_sealed_at else '' }}</td>
+          <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.mark_verified_at.strftime('%d.%m %H:%M') if r.mark_verified_at else '' }}</td>
+          <td style="font-size:11px;white-space:nowrap">
+            {% if r.archive_processed_at %}
+              {% if r.archive_download_url %}
+                <a href="{{ r.archive_download_url }}" target="_blank" style="color:#2874b9">
+                  ✓ {{ r.archive_processed_at.strftime('%d.%m.%Y') }}
+                </a>
+              {% else %}
+                <span style="color:#2e7d32">✓ {{ r.archive_processed_at.strftime('%d.%m.%Y') }}</span>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="17" style="text-align:center;color:#8895a7;padding:24px">Документы не найдены</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="table-footer" style="display:flex;align-items:center;gap:8px;padding:8px 0">
+    {% if page > 1 %}
+    <button class="btn-secondary" type="button"
+            hx-get="/ui/report?{{ pagination_prev_qs }}"
+            hx-target="#main-area" hx-swap="innerHTML">
+      <i data-lucide="chevron-left"></i> Назад
+    </button>
+    {% endif %}
+    <span style="font-size:.9em;color:#555">Стр. {{ page }} / {{ pages }}</span>
+    {% if page < pages %}
+    <button class="btn-secondary" type="button"
+            hx-get="/ui/report?{{ pagination_next_qs }}"
+            hx-target="#main-area" hx-swap="innerHTML">
+      Далее <i data-lucide="chevron-right"></i>
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+<script>if(typeof lucide!=='undefined')lucide.createIcons();</script>

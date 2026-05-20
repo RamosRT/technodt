@@ -44,6 +44,11 @@
             onclick="setMode('idle');setActiveTab(this)">
       <i data-lucide="file-text"></i> Документы
     </button>
+    <button class="ta-nav-item" type="button"
+            hx-get="/ui/report" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('idle');setActiveTab(this)">
+      <i data-lucide="bar-chart-2"></i> Отчёт
+    </button>
     {% endif %}
   </div>
 

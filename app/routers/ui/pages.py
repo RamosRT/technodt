@@ -16,6 +16,7 @@ import app.services.envelopes as env_svc
 import app.services.printers as printer_svc
 import app.services.system_settings as settings_svc
 import app.services.verify as verify_svc
+from app.services.report import list_report_documents
 from app.auth import get_is_admin
 from app.config import get_settings
 from app.db import get_session, get_session_factory
@@ -799,6 +800,84 @@ async def ui_documents_list(
                 "branch_id": str(branch_uuid) if branch_uuid else "",
                 "search": search or "",
             },
+        },
+    )
+
+
+# ─── Document report ──────────────────────────────────────────────────────────
+
+@router.get("/ui/report", response_class=HTMLResponse)
+async def ui_report(
+    request: Request,
+    date_from_raw: Annotated[str | None, Query(alias="date_from")] = None,
+    date_to_raw: Annotated[str | None, Query(alias="date_to")] = None,
+    number: str | None = None,
+    partner: str | None = None,
+    only_archived: str | None = None,
+    only_without_envelope: str | None = None,
+    page: int = Query(default=1, ge=1),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    date_from = optional_query_date(date_from_raw)
+    date_to = optional_query_date(date_to_raw)
+    only_archived_bool = _is_truthy(only_archived)
+    only_without_envelope_bool = _is_truthy(only_without_envelope)
+    page_size = 50
+
+    items, total = await list_report_documents(
+        session,
+        date_from=date_from,
+        date_to=date_to,
+        partner_search=partner or None,
+        number_search=number or None,
+        only_archived=only_archived_bool,
+        only_without_envelope=only_without_envelope_bool,
+        page=page,
+        page_size=page_size,
+    )
+
+    pages = max(1, (total + page_size - 1) // page_size)
+
+    def _qs(**overrides):
+        params = {
+            "date_from": date_from.isoformat() if date_from else "",
+            "date_to": date_to.isoformat() if date_to else "",
+            "number": number or "",
+            "partner": partner or "",
+        }
+        if only_archived_bool:
+            params["only_archived"] = "true"
+        if only_without_envelope_bool:
+            params["only_without_envelope"] = "true"
+        params.update(overrides)
+        return "&".join(f"{k}={v}" for k, v in params.items() if v)
+
+    from app.schemas.report import ReportDocumentRow
+    return templates.TemplateResponse(
+        request,
+        "partials/report.html",
+        {
+            "operator": operator,
+            "is_admin": is_admin,
+            "items": [ReportDocumentRow(**item) for item in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": pages,
+            "filters": {
+                "date_from": date_from.isoformat() if date_from else "",
+                "date_to": date_to.isoformat() if date_to else "",
+                "number": number or "",
+                "partner": partner or "",
+                "only_archived": only_archived_bool,
+                "only_without_envelope": only_without_envelope_bool,
+            },
+            "pagination_prev_qs": _qs(page=str(page - 1)),
+            "pagination_next_qs": _qs(page=str(page + 1)),
         },
     )
 
