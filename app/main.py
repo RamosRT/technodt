@@ -19,6 +19,7 @@ from app.routers.api import envelopes as envelopes_api
 from app.routers.api import health
 from app.routers.api import onec_sync as onec_sync_api
 from app.routers.api import operators as operators_api
+from app.routers.api import report as report_api
 from app.routers.api import printers as printers_api
 from app.routers.api import verify as verify_api
 from app.routers.ui import pages as ui_pages
@@ -92,4 +93,5 @@ app.include_router(documents_api.router)
 app.include_router(audit_api.router)
 app.include_router(printers_api.router)
 app.include_router(onec_sync_api.router)
+app.include_router(report_api.router)
 app.include_router(ui_pages.router)
