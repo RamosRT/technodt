@@ -1,6 +1,7 @@
 """Envelope service — create, lookup, add/remove documents, seal."""
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, date, datetime, time
 
@@ -22,6 +23,8 @@ from app.services.barcode import doc_barcode_to_guid, generate_envelope_codes
 from app.services.odata import OneCClient
 
 MAX_CODE_RETRIES = 5
+
+log = logging.getLogger(__name__)
 
 
 def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
@@ -261,6 +264,10 @@ async def _lookup_from_local_cache(
 ) -> "NormalizedDocument | None":
     from app.services.odata import NormalizedDocument
     doc = await session.get(OneCDocument, guid)
+    if doc is not None and doc.is_deleted:
+        log.warning(
+            "cache lookup: doc %s is marked deleted in local cache, falling back to 1C", guid
+        )
     if doc is None or doc.is_deleted:
         return None
     return NormalizedDocument(
@@ -269,9 +276,17 @@ async def _lookup_from_local_cache(
         doc_number=doc.print_number,
         doc_date=doc.doc_date,
         related_realization_ref=None,
-        raw_payload={},
+        raw_payload={
+            "_source": "local_cache",
+            "Ref_Key": str(guid),
+            "Number": doc.number,
+            "ПредставлениеНомера": doc.print_number,
+            "Date": doc.doc_date.isoformat() + "T00:00:00",
+            "Корректировочный": doc.is_correction,
+        },
         partner_name=doc.partner_name,
         related_realization_number=doc.related_realization_number,
+        related_realization_date=None,
     )
 
 
@@ -304,6 +319,7 @@ async def add_document(
         normalized = await one_c.lookup_document_with_related(guid)
         if normalized.entity == "Document_СчетФактураВыданный" and normalized.partner_name:
             from sqlalchemy import update
+            # Best-effort: enriches partner_name for already-synced docs; no-op if not in cache yet.
             await session.execute(
                 update(OneCDocument)
                 .where(OneCDocument.guid == guid)
