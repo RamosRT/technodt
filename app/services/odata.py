@@ -41,6 +41,21 @@ KNOWN_DOC_TYPES: tuple[str, ...] = (
 
 MARK_ELIGIBLE_ENTITIES: frozenset[str] = frozenset({"Document_СчетФактураВыданный"})
 
+INVOICE_SYNC_SELECT = (
+    "Ref_Key",
+    "Number",
+    "ПредставлениеНомера",
+    "Date",
+    "Корректировочный",
+    "DeletionMark",
+    "ВыставленВЭлектронномВиде",
+    "kzvСсылкаНаКопию",
+    "ДокументОснование",
+    "ДокументОснование_Type",
+)
+
+INVOICE_PARTNER_EXPAND = "Партнер($select=НаименованиеПолное)"
+
 PROP_REGISTERED = uuid.UUID("bda8ba09-4787-11f1-92ca-00155d060d01")
 PROP_SEALED = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
 PROP_VERIFIED = uuid.UUID("daa0fcae-4787-11f1-92ca-00155d060d01")
@@ -282,3 +297,74 @@ class OneCClient:
                     return
                 raise OneCUnavailable(f"1С PATCH mark вернула {patch_resp.status_code}")
         raise OneCUnavailable(f"1С POST mark вернула {resp.status_code}")
+
+    async def fetch_invoices_page(
+        self,
+        *,
+        date_from: date,
+        date_to: date | None,
+        skip: int,
+        top: int,
+        include_deleted: bool = False,
+    ) -> list[dict[str, Any]]:
+        filters = [f"Date ge datetime'{date_from.isoformat()}T00:00:00'"]
+        if date_to is not None:
+            filters.append(f"Date le datetime'{date_to.isoformat()}T23:59:59'")
+        if not include_deleted:
+            filters.append("DeletionMark eq false")
+        params = {
+            "$format": "json",
+            "$select": ",".join(INVOICE_SYNC_SELECT),
+            "$expand": INVOICE_PARTNER_EXPAND,
+            "$filter": " and ".join(filters),
+            "$skip": str(skip),
+            "$top": str(top),
+        }
+        try:
+            resp = await self._client.get("/Document_СчетФактураВыданный", params=params)
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
+            raise OneCUnavailable("1С недоступна при синхронизации") from e
+        if resp.status_code == 401:
+            raise OneCUnavailable("Не удалось авторизоваться в 1С")
+        if resp.status_code != 200:
+            raise OneCUnavailable(f"1С вернула {resp.status_code} при синхронизации")
+        data = resp.json()
+        return data.get("value", [])
+
+    async def get_change_restriction_date(self) -> date | None:
+        params = {
+            "$format": "json",
+            "$select": "ДатаЗапрета",
+            "$orderby": "ДатаЗапрета desc",
+            "$top": "1",
+        }
+        try:
+            resp = await self._client.get(
+                "/InformationRegister_ДатыЗапретаИзменения", params=params
+            )
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError):
+            return None
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        items = data.get("value", [])
+        if not items:
+            return None
+        raw = items[0].get("ДатаЗапрета")
+        return _parse_odata_date(raw) if raw else None
+
+    async def patch_storage_link(
+        self,
+        doc_guid: uuid.UUID,
+        doc_entity: str,
+        storage_link: str,
+    ) -> None:
+        url = f"/{doc_entity}(guid'{doc_guid}')"
+        body = {"kzvСсылкаНаКопию": storage_link}
+        params = {"$format": "json"}
+        try:
+            resp = await self._client.patch(url, json=body, params=params)
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
+            raise OneCUnavailable("1С недоступна при патче ссылки") from e
+        if resp.status_code not in (200, 204):
+            raise OneCUnavailable(f"1С вернула {resp.status_code} при patch storage link")
