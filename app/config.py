@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     print_temp_dir: str = str(Path("tools") / "temp")
     sumatra_timeout_seconds: int = 90
     qr_base_url: str = ""
+    paperless_webhook_api_key: str = ""
+    sync_initial_from_date: str = "2023-01-01"
+    sync_schedule_hours: int = 4
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
