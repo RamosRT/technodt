@@ -170,9 +170,16 @@ sudo chmod +x /opt/scripts/konvertrek_post_consume.sh
 PAPERLESS_POST_CONSUME_SCRIPT=/opt/scripts/konvertrek_post_consume.sh
 KONVERTREK_URL=http://10.60.6.11:8080
 KONVERTREK_API_KEY=<same value as PAPERLESS_WEBHOOK_API_KEY>
+KONVERTREK_ONEC_ORIGINALS_UNC_ROOT=\\kaz-pc036\Техно-Архив
+# optional, defaults to KONVERTREK_ONEC_ORIGINALS_UNC_ROOT
+KONVERTREK_ONEC_ARCHIVE_UNC_ROOT=
 ```
 
 `KONVERTREK_URL` должен быть доступен с Paperless-сервера. Если приложение слушает только `127.0.0.1`, опубликовать порт на нужном интерфейсе или настроить reverse proxy до `127.0.0.1:8080`.
+
+Hook передаёт в Конверт-трек `DOCUMENT_ARCHIVE_PATH` из Paperless как `archive_path`.
+Если путь находится внутри `/usr/src/paperless/media/documents/archive/` или `/usr/src/paperless/media/documents/originals/`,
+скрипт заменяет контейнерный префикс на `KONVERTREK_ONEC_ARCHIVE_UNC_ROOT` или `KONVERTREK_ONEC_ORIGINALS_UNC_ROOT`, чтобы в 1С попал Windows/UNC-путь.
 
 После изменения настроек перезапустить Paperless.
 
