@@ -14,8 +14,10 @@ without sending anything to Konvert-track.
 """
 
 import argparse
+import os
 import time
 from collections import Counter
+from pathlib import PureWindowsPath
 from typing import Any
 
 import httpx
@@ -31,6 +33,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--paperless-token", required=True)
     parser.add_argument("--konvertrek-url", required=True)
     parser.add_argument("--konvertrek-key", required=True)
+    parser.add_argument(
+        "--onec-originals-unc-root",
+        default=os.getenv("PAPERLESS_ONEC_ORIGINALS_UNC_ROOT", ""),
+        help=(
+            "UNC root to store in 1C for Paperless originals, e.g. "
+            r"\\kaz-pc036\Техно-Архив. Can also be set via "
+            "PAPERLESS_ONEC_ORIGINALS_UNC_ROOT."
+        ),
+    )
+    parser.add_argument(
+        "--onec-archive-unc-root",
+        default=os.getenv("PAPERLESS_ONEC_ARCHIVE_UNC_ROOT", ""),
+        help=(
+            "UNC root to store in 1C for Paperless archive files. Defaults to "
+            "--onec-originals-unc-root. Can also be set via "
+            "PAPERLESS_ONEC_ARCHIVE_UNC_ROOT."
+        ),
+    )
+    parser.add_argument(
+        "--replace-unc-from",
+        default=os.getenv("PAPERLESS_REPLACE_UNC_FROM", ""),
+        help=(
+            "Optional UNC prefix to replace when Paperless already provides archive_path, "
+            r"e.g. \\paperless-server\paperless-media\documents\originals."
+        ),
+    )
+    parser.add_argument(
+        "--replace-unc-to",
+        default=os.getenv("PAPERLESS_REPLACE_UNC_TO", ""),
+        help=(
+            "Replacement UNC prefix for --replace-unc-from, e.g. "
+            r"\\kaz-pc036\Техно-Архив."
+        ),
+    )
     parser.add_argument(
         "--invoice-type",
         action="append",
@@ -105,6 +141,12 @@ def fetch_documents_page(client: httpx.Client, page: int) -> dict[str, Any]:
     return resp.json()
 
 
+def fetch_document_metadata(client: httpx.Client, doc_id: int) -> dict[str, Any]:
+    resp = client.get(f"/api/documents/{doc_id}/metadata/")
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
@@ -142,15 +184,77 @@ def _correspondent_name(
         return ""
 
 
+def _normalize_unc_prefix(value: str) -> str:
+    return value.replace("/", "\\").rstrip("\\")
+
+
+def _join_unc(root: str, relative_path: str | None) -> str:
+    if not root or not relative_path:
+        return ""
+    normalized_root = _normalize_unc_prefix(root)
+    normalized_relative = str(relative_path).replace("/", "\\").lstrip("\\")
+    return str(PureWindowsPath(normalized_root) / normalized_relative)
+
+
+def _replace_unc_prefix(path: str, old_prefix: str, new_prefix: str) -> str:
+    if not path or not old_prefix or not new_prefix:
+        return path
+    normalized_path = path.replace("/", "\\")
+    normalized_old = _normalize_unc_prefix(old_prefix)
+    normalized_new = _normalize_unc_prefix(new_prefix)
+    if normalized_path.casefold() == normalized_old.casefold():
+        return normalized_new
+    prefix = normalized_old + "\\"
+    if normalized_path.casefold().startswith(prefix.casefold()):
+        return normalized_new + "\\" + normalized_path[len(prefix) :]
+    return path
+
+
+def build_archive_path(
+    doc: dict[str, Any],
+    metadata: dict[str, Any] | None,
+    *,
+    onec_originals_unc_root: str,
+    onec_archive_unc_root: str,
+    replace_unc_from: str,
+    replace_unc_to: str,
+) -> str:
+    raw_archive_path = str(doc.get("archive_path") or "").strip()
+    if raw_archive_path:
+        return _replace_unc_prefix(raw_archive_path, replace_unc_from, replace_unc_to)
+
+    if not metadata:
+        return ""
+
+    archive_root = onec_archive_unc_root or onec_originals_unc_root
+    if metadata.get("has_archive_version") and metadata.get("archive_media_filename"):
+        return _join_unc(archive_root, str(metadata["archive_media_filename"]))
+
+    return _join_unc(onec_originals_unc_root, metadata.get("media_filename"))
+
+
 def build_event(
     doc: dict[str, Any],
     *,
     paperless_url: str,
     type_map: dict[int, str],
     correspondent_map: dict[int, str],
+    metadata: dict[str, Any] | None = None,
+    onec_originals_unc_root: str = "",
+    onec_archive_unc_root: str = "",
+    replace_unc_from: str = "",
+    replace_unc_to: str = "",
 ) -> dict[str, Any]:
     type_id = _int_or_none(doc.get("document_type"))
     doc_id = doc.get("id")
+    archive_path = build_archive_path(
+        doc,
+        metadata,
+        onec_originals_unc_root=onec_originals_unc_root,
+        onec_archive_unc_root=onec_archive_unc_root,
+        replace_unc_from=replace_unc_from,
+        replace_unc_to=replace_unc_to,
+    )
     return {
         "document_id": doc_id,
         "file_name": doc.get("title", "") or "",
@@ -163,7 +267,7 @@ def build_event(
             else ""
         ),
         "original_filename": doc.get("original_file_name", "") or "",
-        "archive_path": "",
+        "archive_path": archive_path,
     }
 
 
@@ -212,10 +316,19 @@ def main() -> None:
     print(f"  Document types: {dict(sorted(type_counts.items()))}")
     print(f"  Invoice types selected: {sorted(invoice_types)}")
     print(f"  Correspondents cached: {len(correspondent_map)}")
+    if args.onec_originals_unc_root:
+        print(f"  1C originals UNC root: {args.onec_originals_unc_root}")
+    else:
+        print("  Warning: no 1C originals UNC root configured; archive_path will be empty")
+    if args.onec_archive_unc_root:
+        print(f"  1C archive UNC root: {args.onec_archive_unc_root}")
+    if args.replace_unc_from and args.replace_unc_to:
+        print(f"  UNC replacement: {args.replace_unc_from} -> {args.replace_unc_to}")
 
     page = 1
     total_fetched = 0
     total_matched_type = 0
+    total_with_archive_path = 0
     total_sent = 0
     result_counts: Counter[str] = Counter()
     batch: list[dict[str, Any]] = []
@@ -229,13 +342,25 @@ def main() -> None:
         for doc in docs:
             if not is_invoice(doc, type_map, invoice_types):
                 continue
+            metadata: dict[str, Any] | None = None
+            doc_id = _int_or_none(doc.get("id"))
+            if doc_id is not None:
+                metadata = fetch_document_metadata(pl_client, doc_id)
+            event = build_event(
+                doc,
+                paperless_url=args.paperless_url,
+                type_map=type_map,
+                correspondent_map=correspondent_map,
+                metadata=metadata,
+                onec_originals_unc_root=args.onec_originals_unc_root,
+                onec_archive_unc_root=args.onec_archive_unc_root,
+                replace_unc_from=args.replace_unc_from,
+                replace_unc_to=args.replace_unc_to,
+            )
+            if event.get("archive_path"):
+                total_with_archive_path += 1
             batch.append(
-                build_event(
-                    doc,
-                    paperless_url=args.paperless_url,
-                    type_map=type_map,
-                    correspondent_map=correspondent_map,
-                )
+                event
             )
             total_matched_type += 1
 
@@ -276,6 +401,7 @@ def main() -> None:
         "\nDone. "
         f"Fetched={total_fetched}, invoice_type_matches={total_matched_type}, sent={total_sent}"
     )
+    print(f"Events with archive_path={total_with_archive_path}")
     if result_counts:
         print("Result statuses:", dict(sorted(result_counts.items())))
 

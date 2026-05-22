@@ -97,7 +97,27 @@
       "Bash(export JAVA_HOME=\"E:/AndroidStudio/jbr\")",
       "Bash(./gradlew assembleRelease)",
       "Bash(\"C:/Users/Ramos/AppData/Local/Android/Sdk/platform-tools/adb\" devices *)",
-      "Bash(C:/Users/Ramos/AppData/Local/Android/Sdk/platform-tools/adb install *)"
+      "Bash(C:/Users/Ramos/AppData/Local/Android/Sdk/platform-tools/adb install *)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:writing-plans:*)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Skill(superpowers:subagent-driven-development:*)",
+      "Bash(venv\\\\Scripts\\\\python -m alembic downgrade 0007)",
+      "Bash(Get-ChildItem -Path 'E:\\\\technodt\\\\alembic\\\\versions\\\\')",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem E:\\\\technodt -Filter \".env*\" -Force)",
+      "Bash(python -m py_compile app/config.py)",
+      "Bash(venv\\\\Scripts\\\\python -m py_compile app\\\\services\\\\odata.py app\\\\services\\\\onec_sync.py)",
+      "Bash(\"E:\\\\technodt\\\\venv\\\\Scripts\\\\python.exe\" -m py_compile app/services/odata.py app/services/onec_sync.py)",
+      "Bash(cd /mnt/e/technodt && venv/Scripts/pip install \"apscheduler>=3.10,<4\" 2>&1)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(venv\\\\Scripts\\\\python -m py_compile app\\\\config.py app\\\\services\\\\onec_sync.py app\\\\routers\\\\api\\\\onec_sync.py app\\\\main.py)",
+      "Bash(venv\\\\Scripts\\\\python -m py_compile app\\\\services\\\\envelopes.py)",
+      "Bash(E:\\\\technodt\\\\venv\\\\Scripts\\\\python.exe -m py_compile app/services/envelopes.py)",
+      "Bash(\"E:\\\\technodt\\\\venv\\\\Scripts\\\\python.exe\" -m py_compile app/services/envelopes.py)",
+      "Bash(venv\\\\Scripts\\\\python -m py_compile app\\\\schemas\\\\report.py app\\\\services\\\\report.py app\\\\routers\\\\api\\\\report.py app\\\\main.py)",
+      "PowerShell(cd E:\\\\technodt; $proc = Start-Process -FilePath \"venv\\\\Scripts\\\\python.exe\" -ArgumentList \"-m\", \"uvicorn\", \"app.main:app\", \"--host\", \"127.0.0.1\", \"--port\", \"8081\" -PassThru -NoNewWindow; Start-Sleep -Seconds 6; try { $r = Invoke-WebRequest -Uri \"http://127.0.0.1:8081/api/report/documents?page_size=5\" -UseBasicParsing -ErrorAction Stop; Write-Host \"STATUS: $\\($r.StatusCode\\)\"; $r.Content } catch { Write-Host \"Response: $_\" } finally { $proc | Stop-Process -Force })",
+      "Bash(venv\\\\Scripts\\\\python -m py_compile app\\\\services\\\\paperless.py)"
     ]
   }
 }

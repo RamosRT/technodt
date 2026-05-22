@@ -1,0 +1,222 @@
+import asyncio
+import logging
+from collections import Counter
+from pathlib import PureWindowsPath
+from typing import Any
+
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings
+from app.services.odata import OneCClient
+from app.services.paperless import process_paperless_event
+
+log = logging.getLogger(__name__)
+
+DEFAULT_INVOICE_TYPES = frozenset({"упд", "укд", "упд/укд"})
+_paperless_tag_lock = asyncio.Lock()
+
+
+def _normalize_unc_root(value: str) -> str:
+    return value.replace("/", "\\").rstrip("\\")
+
+
+def _join_unc(root: str, relative_path: str | None) -> str:
+    if not root or not relative_path:
+        return ""
+    return str(
+        PureWindowsPath(_normalize_unc_root(root))
+        / str(relative_path).replace("/", "\\").lstrip("\\")
+    )
+
+
+def build_archive_path_from_metadata(
+    metadata: dict[str, Any],
+    *,
+    originals_unc_root: str,
+    archive_unc_root: str = "",
+) -> str:
+    archive_root = archive_unc_root or originals_unc_root
+    if metadata.get("has_archive_version") and metadata.get("archive_media_filename"):
+        return _join_unc(archive_root, str(metadata["archive_media_filename"]))
+    return _join_unc(originals_unc_root, metadata.get("media_filename"))
+
+
+class PaperlessTagClient:
+    def __init__(self, *, base_url: str, token: str, timeout: float = 30) -> None:
+        self._client = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            headers={"Authorization": f"Token {token}"},
+            timeout=timeout,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def _get_all(self, path: str, *, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        page = 1
+        rows: list[dict[str, Any]] = []
+        while True:
+            query = {"page": page, "page_size": 200}
+            if params:
+                query.update(params)
+            resp = await self._client.get(path, params=query)
+            resp.raise_for_status()
+            data = resp.json()
+            rows.extend(data.get("results", []))
+            if not data.get("next"):
+                break
+            page += 1
+        return rows
+
+    async def fetch_document_types(self) -> dict[int, str]:
+        return {
+            int(item["id"]): str(item["name"])
+            for item in await self._get_all("/api/document_types/")
+            if item.get("id") is not None
+        }
+
+    async def fetch_correspondents(self) -> dict[int, str]:
+        return {
+            int(item["id"]): str(item["name"])
+            for item in await self._get_all("/api/correspondents/")
+            if item.get("id") is not None
+        }
+
+    async def fetch_documents_with_tag(self, tag_id: int, *, limit: int) -> list[dict[str, Any]]:
+        rows = await self._get_all("/api/documents/", params={"tags__id": tag_id, "ordering": "-created"})
+        return rows[:limit]
+
+    async def fetch_metadata(self, document_id: int) -> dict[str, Any]:
+        resp = await self._client.get(f"/api/documents/{document_id}/metadata/")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def patch_document_tags(self, document_id: int, tags: list[int]) -> None:
+        resp = await self._client.patch(f"/api/documents/{document_id}/", json={"tags": tags})
+        resp.raise_for_status()
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _name_from_id(value: Any, mapping: dict[int, str]) -> str:
+    item_id = _int_or_none(value)
+    return mapping.get(item_id, "") if item_id is not None else ""
+
+
+def _without_tag(tags: list[int], tag_id: int) -> list[int]:
+    return [item for item in tags if item != tag_id]
+
+
+def _with_tag(tags: list[int], tag_id: int) -> list[int]:
+    return tags if tag_id in tags else [*tags, tag_id]
+
+
+def _document_tags(doc: dict[str, Any]) -> list[int]:
+    tags = []
+    for value in doc.get("tags") or []:
+        tag_id = _int_or_none(value)
+        if tag_id is not None:
+            tags.append(tag_id)
+    return tags
+
+
+async def process_paperless_marked_documents(
+    session: AsyncSession,
+    onec_client: OneCClient,
+    paperless_client: PaperlessTagClient,
+    settings: Settings,
+) -> dict[str, Any]:
+    if not settings.paperless_api_url or not settings.paperless_api_token:
+        return {
+            "status": "disabled",
+            "reason": "Paperless API URL/token are not configured",
+        }
+
+    if not settings.paperless_onec_originals_unc_root:
+        return {
+            "status": "disabled",
+            "reason": "PAPERLESS_ONEC_ORIGINALS_UNC_ROOT is not configured",
+        }
+
+    type_map = await paperless_client.fetch_document_types()
+    correspondent_map = await paperless_client.fetch_correspondents()
+    docs = await paperless_client.fetch_documents_with_tag(
+        settings.paperless_mark_tag_id,
+        limit=max(settings.paperless_poll_batch_size, 1),
+    )
+
+    counts: Counter[str] = Counter()
+    items: list[dict[str, Any]] = []
+    for doc in docs:
+        document_id = _int_or_none(doc.get("id"))
+        if document_id is None:
+            counts["skipped"] += 1
+            continue
+
+        tags = _document_tags(doc)
+        doc_type = _name_from_id(doc.get("document_type"), type_map)
+        if doc_type.strip().lower() not in DEFAULT_INVOICE_TYPES:
+            counts["skipped"] += 1
+            items.append({"document_id": document_id, "status": "skipped", "reason": f"type={doc_type!r}"})
+            continue
+
+        metadata = await paperless_client.fetch_metadata(document_id)
+        archive_path = build_archive_path_from_metadata(
+            metadata,
+            originals_unc_root=settings.paperless_onec_originals_unc_root,
+            archive_unc_root=settings.paperless_onec_archive_unc_root,
+        )
+
+        event = {
+            "doc_type": doc_type,
+            "doc_date_str": doc.get("created") or doc.get("created_date"),
+            "file_name": doc.get("title") or "",
+            "original_filename": doc.get("original_file_name") or "",
+            "correspondent": _name_from_id(doc.get("correspondent"), correspondent_map),
+            "archive_path": archive_path,
+            "download_url": f"{settings.paperless_api_url.rstrip('/')}/api/documents/{document_id}/download/",
+        }
+
+        try:
+            result = await process_paperless_event(
+                session,
+                onec_client,
+                raise_on_patch_error=True,
+                **event,
+            )
+            if result.get("status") == "matched":
+                new_tags = _without_tag(
+                    _without_tag(tags, settings.paperless_mark_tag_id),
+                    settings.paperless_error_tag_id,
+                )
+                await paperless_client.patch_document_tags(document_id, new_tags)
+                counts["matched"] += 1
+            else:
+                new_tags = _with_tag(tags, settings.paperless_error_tag_id)
+                await paperless_client.patch_document_tags(document_id, new_tags)
+                counts[str(result.get("status", "not_matched"))] += 1
+            items.append({"document_id": document_id, "status": result.get("status"), "result": result})
+        except Exception as exc:
+            log.exception("Paperless tagged document processing failed: document_id=%s", document_id)
+            new_tags = _with_tag(tags, settings.paperless_error_tag_id)
+            try:
+                await paperless_client.patch_document_tags(document_id, new_tags)
+            except Exception:
+                log.exception("failed to set Paperless error tag: document_id=%s", document_id)
+            counts["error"] += 1
+            items.append({"document_id": document_id, "status": "error", "error": str(exc)})
+
+    return {
+        "status": "done",
+        "total": len(docs),
+        "counts": dict(sorted(counts.items())),
+        "items": items,
+    }

@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import UTC, datetime
+from difflib import SequenceMatcher
 from typing import Any
 
 from sqlalchemy import and_, or_, select, update
@@ -17,6 +18,60 @@ _INVOICE_TYPES = frozenset({"упд", "укд", "упд/укд"})
 
 # Extracts document number from filenames like "02.03.2026 УПД № УТ-1566 ООО Камский Бекон.pdf"
 _NUMBER_RE = re.compile(r"[№#]\s*([\w\-/]+)", re.IGNORECASE)
+_NON_NAME_CHARS_RE = re.compile(r"[^0-9a-zа-я]+", re.IGNORECASE)
+
+_LEGAL_FORM_TOKENS = frozenset(
+    {
+        "ооо",
+        "ао",
+        "пао",
+        "зао",
+        "оао",
+        "ип",
+        "нко",
+        "ано",
+        "фгуп",
+        "муп",
+        "гуп",
+        "кфх",
+        "пк",
+        "спк",
+        "общество",
+        "ограниченной",
+        "ответственностью",
+        "акционерное",
+        "закрытое",
+        "открытое",
+    }
+)
+_GENERIC_PARTNER_TOKENS = frozenset(
+    {
+        "с",
+        "торговый",
+        "торговая",
+        "торговое",
+        "дом",
+        "компания",
+        "научно",
+        "производственное",
+        "производственный",
+        "объединение",
+        "предприятие",
+    }
+)
+_ABBREVIATIONS = {
+    "тд": ("торговый", "дом"),
+    "тк": ("торговая", "компания"),
+    "нпо": ("научно", "производственное", "объединение"),
+    "ук": ("управляющая", "компания"),
+}
+_PARTNER_ALIASES = {
+    # Short Paperless classifier names that cannot be inferred reliably by fuzzy matching.
+    "кап": ("казанское", "авиапредприятие"),
+}
+_PARTNER_MATCH_THRESHOLD = 0.86
+_PARTNER_AMBIGUOUS_THRESHOLD = 0.90
+_PARTNER_AMBIGUOUS_MARGIN = 0.08
 
 
 def _is_invoice_type(doc_type: str | None) -> bool:
@@ -35,6 +90,47 @@ def _extract_number_from_name(name: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def _normalize_partner_name(value: str | None) -> str:
+    if not value:
+        return ""
+
+    clean = _NON_NAME_CHARS_RE.sub(" ", value.casefold().replace("ё", "е"))
+    expanded: list[str] = []
+    for token in clean.split():
+        expanded.extend(_ABBREVIATIONS.get(token, (token,)))
+
+    filtered = [
+        token
+        for token in expanded
+        if token not in _LEGAL_FORM_TOKENS and token not in _GENERIC_PARTNER_TOKENS
+    ]
+    normalized = " ".join(filtered)
+    return " ".join(_PARTNER_ALIASES.get(normalized, filtered))
+
+
+def _partner_name_score(paperless_name: str | None, onec_name: str | None) -> float:
+    left = _normalize_partner_name(paperless_name)
+    right = _normalize_partner_name(onec_name)
+    if not left or not right:
+        return 0.0
+    if left == right or left in right or right in left:
+        return 1.0
+
+    left_tokens = set(left.split())
+    right_tokens = set(right.split())
+    token_score = 0.0
+    if left_tokens and right_tokens:
+        token_score = len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
+
+    return max(token_score, SequenceMatcher(None, left, right).ratio())
+
+
+def _current_partner_substring_match(paperless_name: str | None, onec_name: str | None) -> bool:
+    if not paperless_name or not onec_name:
+        return False
+    return paperless_name[:30].lower() in onec_name.lower()
+
+
 async def find_matching_document(
     session: AsyncSession,
     *,
@@ -42,40 +138,69 @@ async def find_matching_document(
     doc_number: str | None,
     correspondent: str | None,
 ) -> OneCDocument | None:
-    if not doc_number and not doc_date:
+    if not doc_number or not doc_date:
         return None
 
     conditions: list = [OneCDocument.is_deleted.is_(False)]
 
-    if doc_date:
-        # Compare date part only — DOCUMENT_CREATED may include time component
-        conditions.append(OneCDocument.doc_date == doc_date.date() if hasattr(doc_date, "date") else doc_date)
+    # Compare date part only — DOCUMENT_CREATED may include time component.
+    conditions.append(OneCDocument.doc_date == doc_date.date() if hasattr(doc_date, "date") else doc_date)
 
-    if doc_number:
-        # Try exact and suffix match (e.g. "УТ-1566" or just "1566")
-        digits_only = re.sub(r"[^\d]", "", doc_number)
+    # Try exact and suffix match (e.g. "УТ-1566" or just "1566").
+    digits_only = re.sub(r"[^\d]", "", doc_number)
+    number_cond = or_(
+        OneCDocument.print_number.ilike(f"%{doc_number}%"),
+        OneCDocument.number.ilike(f"%{doc_number}%"),
+    )
+    if digits_only:
         number_cond = or_(
-            OneCDocument.print_number.ilike(f"%{doc_number}%"),
-            OneCDocument.number.ilike(f"%{doc_number}%"),
+            number_cond,
+            OneCDocument.print_number.ilike(f"%{digits_only}%"),
+            OneCDocument.number.ilike(f"%{digits_only}%"),
         )
-        if digits_only:
-            number_cond = or_(
-                number_cond,
-                OneCDocument.print_number.ilike(f"%{digits_only}%"),
-            )
-        conditions.append(number_cond)
-
-    if correspondent:
-        # Use only first 30 chars to avoid overly specific mismatch
-        conditions.append(
-            OneCDocument.partner_name.ilike(f"%{correspondent[:30]}%")
-        )
+    conditions.append(number_cond)
 
     stmt = select(OneCDocument).where(and_(*conditions)).limit(5)
     rows = (await session.execute(stmt)).scalars().all()
 
-    if len(rows) == 1:
-        return rows[0]
+    if not rows:
+        return None
+
+    scored = sorted(
+        ((row, _partner_name_score(correspondent, row.partner_name)) for row in rows),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    if len(scored) == 1:
+        row, score = scored[0]
+        if not correspondent or score >= _PARTNER_MATCH_THRESHOLD:
+            if correspondent and not _current_partner_substring_match(correspondent, row.partner_name):
+                log.info(
+                    "matched Paperless correspondent via normalized score %.3f: %r -> %r",
+                    score,
+                    correspondent,
+                    row.partner_name,
+                )
+            return row
+        log.warning(
+            "Paperless match rejected by correspondent score %.3f for number=%s date=%s: %r -> %r",
+            score,
+            doc_number,
+            doc_date,
+            correspondent,
+            row.partner_name,
+        )
+        return None
+
+    best_row, best_score = scored[0]
+    second_score = scored[1][1]
+    if (
+        best_score >= _PARTNER_AMBIGUOUS_THRESHOLD
+        and best_score - second_score >= _PARTNER_AMBIGUOUS_MARGIN
+    ):
+        return best_row
+
     if len(rows) > 1:
         log.warning(
             "ambiguous Paperless match: %d candidates for number=%s date=%s",
@@ -98,6 +223,7 @@ async def process_paperless_event(
     correspondent: str | None,
     archive_path: str | None,   # DOCUMENT_ARCHIVE_PATH — UNC path to the file
     download_url: str | None,   # DOCUMENT_DOWNLOAD_URL — HTTP link in Paperless
+    raise_on_patch_error: bool = False,
 ) -> dict[str, Any]:
     if not _is_invoice_type(doc_type):
         return {"status": "skipped", "reason": f"not an invoice type: {doc_type!r}"}
@@ -153,6 +279,8 @@ async def process_paperless_event(
             )
         except Exception as exc:
             log.warning("failed to patch 1C storage link for %s: %s", match.guid, exc)
+            if raise_on_patch_error:
+                raise
 
     return {
         "status": "matched",

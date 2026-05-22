@@ -19,13 +19,18 @@ from app.routers.api import envelopes as envelopes_api
 from app.routers.api import health
 from app.routers.api import onec_sync as onec_sync_api
 from app.routers.api import operators as operators_api
-from app.routers.api import report as report_api
 from app.routers.api import printers as printers_api
+from app.routers.api import report as report_api
 from app.routers.api import verify as verify_api
 from app.routers.api import webhooks as webhooks_api
 from app.routers.ui import pages as ui_pages
 from app.services.odata import OneCClient
 from app.services.onec_sync import _sync_lock, run_incremental_sync
+from app.services.paperless_tag_sync import (
+    PaperlessTagClient,
+    _paperless_tag_lock,
+    process_paperless_marked_documents,
+)
 
 _STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -45,7 +50,7 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[get_one_c_client] = lambda: app.state.one_c
 
     scheduler = None
-    if s.sync_schedule_hours > 0:
+    if s.sync_schedule_hours > 0 or s.paperless_poll_interval_minutes > 0:
         scheduler = AsyncIOScheduler()
 
         async def _scheduled_sync() -> None:
@@ -60,15 +65,54 @@ async def lifespan(app: FastAPI):
                     except Exception as exc:
                         log.error("scheduled incremental sync failed: %s", exc)
 
-        scheduler.add_job(
-            _scheduled_sync,
-            "interval",
-            hours=s.sync_schedule_hours,
-            id="incremental_sync",
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=300,
-        )
+        if s.sync_schedule_hours > 0:
+            scheduler.add_job(
+                _scheduled_sync,
+                "interval",
+                hours=s.sync_schedule_hours,
+                id="incremental_sync",
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=300,
+            )
+
+        async def _scheduled_paperless_tag_sync() -> None:
+            if not s.paperless_api_url or not s.paperless_api_token:
+                log.warning("scheduled Paperless tag sync: Paperless API is not configured")
+                return
+            if _paperless_tag_lock.locked():
+                log.warning("scheduled Paperless tag sync: lock busy, skipping")
+                return
+            async with _paperless_tag_lock:
+                paperless_client = PaperlessTagClient(
+                    base_url=s.paperless_api_url,
+                    token=s.paperless_api_token,
+                )
+                try:
+                    factory = get_session_factory()
+                    async with factory() as session:
+                        result = await process_paperless_marked_documents(
+                            session,
+                            client,
+                            paperless_client,
+                            s,
+                        )
+                        log.info("scheduled Paperless tag sync finished: %s", result)
+                except Exception:
+                    log.exception("scheduled Paperless tag sync failed")
+                finally:
+                    await paperless_client.aclose()
+
+        if s.paperless_poll_interval_minutes > 0:
+            scheduler.add_job(
+                _scheduled_paperless_tag_sync,
+                "interval",
+                minutes=s.paperless_poll_interval_minutes,
+                id="paperless_tag_sync",
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=300,
+            )
         scheduler.start()
         app.state.scheduler = scheduler
 

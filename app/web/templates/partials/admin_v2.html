@@ -361,6 +361,27 @@
             </button>
           </form>
         </div>
+        <div class="admin-system-card admin-system-card-sync">
+          <i data-lucide="archive-restore"></i>
+          <div>
+            <strong>Paperless: отметка в 1С</strong>
+            <span>
+              Документы с тегом {{ paperless_mark_tag_id }} будут сопоставлены с локальной базой и отмечены в 1С.
+            </span>
+            <small>
+              При успехе тег снимается. При ошибке ставится тег {{ paperless_error_tag_id }}.
+              {% if paperless_poll_enabled %}Автозапуск каждые {{ paperless_poll_interval_minutes }} мин.{% else %}Автозапуск выключен.{% endif %}
+            </small>
+          </div>
+          <form class="admin-system-action"
+                hx-post="/ui/admin/paperless/tag-sync"
+                hx-target="#main-area"
+                hx-confirm="Запустить обработку документов Paperless с тегом отметки в 1С?">
+            <button class="btn btn-primary" type="submit">
+              <i data-lucide="play"></i> Обработать сейчас
+            </button>
+          </form>
+        </div>
         {% if show_reset %}
         <div class="danger-zone">
           <h3><i data-lucide="triangle-alert"></i> Опасная зона</h3>

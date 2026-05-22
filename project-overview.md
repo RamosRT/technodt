@@ -424,6 +424,222 @@ Accept: application/json
 3.1 +1 кнопка отправки на а4 принтер (zpl кнопка уже есть)
 
 
+v2.0 - интеграция с paperless и расширение отчета по документам
+1) уход от постоянных обращений к 1С для получения информации о документе. Вместо этого предварительно тянем информацию из 1с в локальную бд.
+Вся информация при работе фронта и приложения тсд берется из локальной бд.
+При этом отметики в 1С все равно останутся при регистрации, запечатке и верификации конверта. 
+2) Нужно расширить отчет по документам и в целом заиметь view для всех документов в локальной бд.
+Логика такая - мыберем все документы счет фактура из 1с (поля которые нас интересует) и сохраним их в локальную бд.
+(надо также что-то придумать с офновыми обновлениями списка документов в 1с)
+Колонки в view для всех счет-фактур из 1с :
+- guid документа
+- номер документа
+- дата документа
+- тип документа (упд/укд)
+- клиент
+- ЭДО (да-нет)
+- номер связанной реализации
+- зарегистрирован к отправке (да-нет)
+- запечатан (да-нет)
+- проверен (да-нет)
+- расхождение (да-нет)
+- конверты 
+- отметка о регистрации в 1С (да,да,да-нет,нет,нет)
+- обработан в ТехноАрхиве (да-нет)
+
+Расширенный отчет по всем документам:
+
+- guid документа
+- номер документа
+- дата документа
+- тип документа
+- клиент
+- ЭДО (да-нет)
+- номер связанной реализации
+- зарегистрирован к отправке (дата)
+- запечатан (дата)
+- расхождение (да-нет)
+- конверты 
+- филиал отправки
+- оператор
+- подписант
+- проверен (дата)
+- оператор проверки
+- филиал получения
+- отметка в 1с о регистрации (дата)
+- отметка в 1 о запечатке (дата)
+- отметка в 1 с о верификации (дата)
+- обработан в ТехноАрхиве (дата)
+- Ссылка на preview(prewiew link https)
+- Техноархив Storage link (link to file)
+
+Что такое обработан в ТехноАрхиве:
+У предприятия есть система управления электронными документами на базе paperless
+В этой системе сканы при помощи ии распознаются и сохраняются в базу данных paperless, переименовываются файлы и сохраняются в папку storage.
+У paperless есть возмонжость задать bash скрипт после consumption документа.
+Нам необходимо будет создать api к которому будет обращаться paperless (скрипт)
+
+Сервис может передать нам следующие данные:
+Environment Variable	Description
+DOCUMENT_ID	Database primary key of the document
+DOCUMENT_FILE_NAME	Formatted filename, not including paths
+DOCUMENT_TYPE	The document type (if any)
+DOCUMENT_CREATED	Date & time when document created
+DOCUMENT_MODIFIED	Date & time when document was last modified
+DOCUMENT_ADDED	Date & time when document was added
+DOCUMENT_SOURCE_PATH	Path to the original document file
+DOCUMENT_THUMBNAIL_PATH	Path to the generated thumbnail
+DOCUMENT_DOWNLOAD_URL	URL for document download
+DOCUMENT_THUMBNAIL_URL	URL for the document thumbnail
+DOCUMENT_CORRESPONDENT	Assigned correspondent (if any)
+DOCUMENT_ORIGINAL_FILENAME	Filename of original document
+А также может дать нам content часть документа, где мы содержим краткое описание документа в формате:
+
+Сам технорхив (paperless) не знает о guid нашего документа, однако он знает нашего клиента (не всегда точно), знает номер документа и дату документа, и тип документа. 
+А задача нашего api по переданным данным сопоставить с документов в локальной бд и и сделать отметки о том что документ обработан в ТехноАрхиве и также передать ссылку на storage link в документ 1с в качестве string реквизита. 
+
+Этот функционал будет работать только для счет-фактур.
+Поэтому когда paperless передает тип документа "доверенность" мы должны игнорировать этот документ и не делать никаких отметок о нем.
+
+Чем заполнять локальную бд: (select\filter)
+- Ref_id - это guid документа из 1с
+- Number - номер документа
+- ПредставлениеНомера - номер документа (печатаемый)
+- Date - дата документа
+- Корректировочный - (признак упд/укд)
+- ДокументОснование - ссылка на документ в 1с ( чтобы вытаскивать связанную реализацию)
+- ДокументОснование_Type - тип документа иснования 
+- партнер (клиент)
+- ВыставленВЭлектронномВиде (признак электронного документа)
+- kzvСсылкаНаКопию - ссылка на копию 
+filter - DeletionMark eq false and date gt 01.01.2023
+использовать пагинацию при загрузке документов.
++ Надо как-то продумать фоновое обновление списка документов из 1С, чтобы не тянуть всегда все документы из 1С, а только те которые были изменены с момента последнего обновления. Можно использовать механизм дата запрета изменения документа в 1С. (InformationRegister_ДатыЗапретаИзменения) - документы до этой даты не подлежат фоновому обновлению, документы после этой даты подлежат фоновому обновлению.
+То есть мы изначально тянем все, а документы с даты запрета до сегодняшнего дня мы тянем фоном по расписанию. (надо также предусмотреть рассинхрона когда при первом обновлении документ не был помечен на удаление, а потом его пометили на удаление и после фонового обновления у нас он остался так и висеть)
+
+То есть примерный алгоритм такой:
+1) загружаем все документы с выставленными фильтрами и фильтрами начиная с 01.01.2023 до сегодняшнего дня с пагинацией и сохраняем их в локальную бд
+2) Теперь весь бэкенд завязан на использвание локальной бд при регистрации, запечатке и верификации конверта.
+При этом бэкенд так же делает отметки в 1С о регистрации, запечатке и верификации конверта по мере появления отметок документов в локальной бд.
+3) Видим полнценный отчет о документах, начиная от регистрации документа в 1С до обработки в ТехноАрхиве.
+4) при срабатывании post-consumption сркипта  делаем отметку о том, что докумен дошел до техноархива +  по гуиду документа делаем патч запрос и вставляем ссылку на storage link в документ 1с в качестве string реквизита.
+Ссылка вставляется в таком формате
+"kzvСсылкаНаКопию": "\\\\kaz-pc036\\Техно-Архив\\2026\\03\\02.03.2026 УПД № УТ-1566 ООО -Камский Бекон-.pdf",
+
+Ключевые поля для сопоставления документов из техноархива и документов в локальной бд:
+Номер документа и дата документа
+Корресподнент (клиент)
+Тип документа.
+Условно говоря документ обработался в paperless и сабатывает скрипт:
+я обработал документ, вот его данные.
+Мы должны по эти данным найти соотвествующий документ в локальной бд и сделать отметку о том, что документ обработан в ТехноАрхиве, и отправить patch запрос в 1с с сылкой на конечный pdf файл. 
+
+Пример скрипта из официальной документации paperless:
+
+Hooking into the consumption process
+Sometimes you may want to do something arbitrary whenever a document is consumed. Rather than try to predict what you may want to do, Paperless lets you execute scripts of your own choosing just before or after a document is consumed using a couple of simple hooks.
+
+Just write a script, put it somewhere that Paperless can read & execute, and then put the path to that script in paperless.conf or docker-compose.env with the variable name of either PAPERLESS_PRE_CONSUME_SCRIPT or PAPERLESS_POST_CONSUME_SCRIPT.
+
+Info
+
+These scripts are executed in a blocking process, which means that if a script takes a long time to run, it can significantly slow down your document consumption flow. If you want things to run asynchronously, you'll have to fork the process in your script and exit.
+
+Pre-consumption script
+Executed after the consumer sees a new document in the consumption folder, but before any processing of the document is performed. This script can access the following relevant environment variables set:
+
+Environment Variable	Description
+DOCUMENT_SOURCE_PATH	Original path of the consumed document
+DOCUMENT_WORKING_PATH	Path to a copy of the original that consumption will work on
+TASK_ID	UUID of the task used to process the new document (if any)
+Note
+
+Pre-consume scripts which modify the document should only change the DOCUMENT_WORKING_PATH file or a second consume task may be triggered, leading to failures as two tasks work on the same document path
+
+Warning
+
+If your script modifies DOCUMENT_WORKING_PATH in a non-deterministic way, this may allow duplicate documents to be stored
+
+A simple but common example for this would be creating a simple script like this:
+
+/usr/local/bin/ocr-pdf
 
 
+#!/usr/bin/env bash
+pdf2pdfocr.py -i ${DOCUMENT_WORKING_PATH}
+/etc/paperless.conf
 
+
+...
+PAPERLESS_PRE_CONSUME_SCRIPT="/usr/local/bin/ocr-pdf"
+...
+This will pass the path to the document about to be consumed to /usr/local/bin/ocr-pdf, which will in turn call pdf2pdfocr.py on your document, which will then overwrite the file with an OCR'd version of the file and exit. At which point, the consumption process will begin with the newly modified file.
+
+The script's stdout and stderr will be logged line by line to the webserver log, along with the exit code of the script.
+
+Post-consumption script
+Executed after the consumer has successfully processed a document and has moved it into paperless. It receives the following environment variables:
+
+Environment Variable	Description
+DOCUMENT_ID	Database primary key of the document
+DOCUMENT_FILE_NAME	Formatted filename, not including paths
+DOCUMENT_TYPE	The document type (if any)
+DOCUMENT_CREATED	Date & time when document created
+DOCUMENT_MODIFIED	Date & time when document was last modified
+DOCUMENT_ADDED	Date & time when document was added
+DOCUMENT_SOURCE_PATH	Path to the original document file
+DOCUMENT_ARCHIVE_PATH	Path to the generate archive file (if any)
+DOCUMENT_THUMBNAIL_PATH	Path to the generated thumbnail
+DOCUMENT_DOWNLOAD_URL	URL for document download
+DOCUMENT_THUMBNAIL_URL	URL for the document thumbnail
+DOCUMENT_OWNER	Username of the document owner (if any)
+DOCUMENT_CORRESPONDENT	Assigned correspondent (if any)
+DOCUMENT_TAGS	Comma separated list of tags applied (if any)
+DOCUMENT_ORIGINAL_FILENAME	Filename of original document
+TASK_ID	Task UUID used to import the document (if any)
+The script can be in any language, A simple shell script example:
+
+post-consumption-example
+
+#!/usr/bin/env bash
+
+echo "
+
+A document with an id of ${DOCUMENT_ID} was just consumed.  I know the
+following additional information about it:
+
+* Generated File Name: ${DOCUMENT_FILE_NAME}
+* Document type: ${DOCUMENT_TYPE}
+* Archive Path: ${DOCUMENT_ARCHIVE_PATH}
+* Source Path: ${DOCUMENT_SOURCE_PATH}
+* Created: ${DOCUMENT_CREATED}
+* Added: ${DOCUMENT_ADDED}
+* Modified: ${DOCUMENT_MODIFIED}
+* Thumbnail Path: ${DOCUMENT_THUMBNAIL_PATH}
+* Download URL: ${DOCUMENT_DOWNLOAD_URL}
+* Thumbnail URL: ${DOCUMENT_THUMBNAIL_URL}
+* Owner Name: ${DOCUMENT_OWNER}
+* Correspondent: ${DOCUMENT_CORRESPONDENT}
+* Tags: ${DOCUMENT_TAGS}
+
+It was consumed with the passphrase ${PASSPHRASE}
+
+"
+Note
+
+The post consumption script cannot cancel the consumption process.
+
+Warning
+
+The post consumption script should not modify the document files directly.
+
+The script's stdout and stderr will be logged line by line to the webserver log, along with the exit code of the script.
+
+------------
+Исходный код техно-архива находится по пути D:\technoefim
+
+
+По сути, мы определяем там дату, номер, тип и корреспондента при помощи и и отправляем post запрос сразу в api paperless, перебивая autoocr, то есть при заливке мы уже все знаем. 
+Может быть не стоит прибегать к post-consume скрипту а использоовать уже то что имеем, и отправлять в наш api даные из content, хотя таким образом у нас не будет storagepath, download url, и так далее. 
+
+++ У меня уже есть десятки тысяч документов в paperless, и если сценарий выше у нас будет работать только для новых документов, то нам надо еще как-то придумать способ обработки (отметки в бд и проставление ссылок в 1с) для уже существубщих документов. 

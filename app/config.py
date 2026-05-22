@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     sumatra_timeout_seconds: int = 90
     qr_base_url: str = ""
     paperless_webhook_api_key: str = ""
+    paperless_api_url: str = ""
+    paperless_api_token: str = ""
+    paperless_mark_tag_id: int = 52
+    paperless_error_tag_id: int = 53
+    paperless_onec_originals_unc_root: str = ""
+    paperless_onec_archive_unc_root: str = ""
+    paperless_poll_interval_minutes: int = 0
+    paperless_poll_batch_size: int = 50
     sync_initial_from_date: date = date(2023, 1, 1)
     sync_schedule_hours: int = 4
 

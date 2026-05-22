@@ -39,6 +39,11 @@ from app.services import operators as op_svc
 from app.services.odata import OneCClient
 from app.services.onec_marks import fire_seal_marks, fire_verify_marks
 from app.services.onec_sync import _sync_lock, get_sync_status, run_initial_sync
+from app.services.paperless_tag_sync import (
+    PaperlessTagClient,
+    _paperless_tag_lock,
+    process_paperless_marked_documents,
+)
 from app.services.report import list_report_documents
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
@@ -1057,6 +1062,7 @@ async def ui_admin(
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
     sync_status = await get_sync_status(session)
     qr_server_url = _resolve_qr_server_url(request)
+    settings = get_settings()
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -1069,9 +1075,13 @@ async def ui_admin(
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
             "sync_status": sync_status,
-            "sync_initial_from_date": get_settings().sync_initial_from_date,
+            "sync_initial_from_date": settings.sync_initial_from_date,
+            "paperless_mark_tag_id": settings.paperless_mark_tag_id,
+            "paperless_error_tag_id": settings.paperless_error_tag_id,
+            "paperless_poll_enabled": settings.paperless_poll_interval_minutes > 0,
+            "paperless_poll_interval_minutes": settings.paperless_poll_interval_minutes,
             "qr_server_url": qr_server_url,
-            "show_reset": get_settings().env != "production",
+            "show_reset": settings.env != "production",
             "active_admin_tab": "printers",
             **audit_ctx,
             **onec_marks_ctx,
@@ -1097,6 +1107,7 @@ async def _admin_v2_response(
     enable_1c_timestamps = await settings_svc.is_1c_timestamps_enabled(session)
     sync_status = await get_sync_status(session)
     qr_server_url = _resolve_qr_server_url(request)
+    settings = get_settings()
     return templates.TemplateResponse(
         request,
         "partials/admin_v2.html",
@@ -1109,10 +1120,14 @@ async def _admin_v2_response(
             "signers": signers,
             "enable_1c_timestamps": enable_1c_timestamps,
             "sync_status": sync_status,
-            "sync_initial_from_date": get_settings().sync_initial_from_date,
+            "sync_initial_from_date": settings.sync_initial_from_date,
+            "paperless_mark_tag_id": settings.paperless_mark_tag_id,
+            "paperless_error_tag_id": settings.paperless_error_tag_id,
+            "paperless_poll_enabled": settings.paperless_poll_interval_minutes > 0,
+            "paperless_poll_interval_minutes": settings.paperless_poll_interval_minutes,
             "system_notice": system_notice,
             "qr_server_url": qr_server_url,
-            "show_reset": get_settings().env != "production",
+            "show_reset": settings.env != "production",
             "active_admin_tab": active_tab,
             **audit_ctx,
             **onec_marks_ctx,
@@ -1467,6 +1482,93 @@ async def ui_admin_start_initial_sync(
             "text": (
                 f"Начальное заполнение запущено с даты {date_from}. "
                 "Статус обновится после перезагрузки панели."
+            ),
+        },
+    )
+
+
+@router.post("/ui/admin/paperless/tag-sync", response_class=HTMLResponse)
+async def ui_admin_start_paperless_tag_sync(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+    client: OneCClient = Depends(get_one_c_client),
+):
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    settings = get_settings()
+    if not settings.paperless_api_url or not settings.paperless_api_token:
+        return await _admin_v2_response(
+            request,
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            active_tab="system",
+            system_notice={
+                "kind": "error",
+                "text": "Paperless API не настроен: проверьте PAPERLESS_API_URL и PAPERLESS_API_TOKEN.",
+            },
+        )
+    if not settings.paperless_onec_originals_unc_root:
+        return await _admin_v2_response(
+            request,
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            active_tab="system",
+            system_notice={
+                "kind": "error",
+                "text": "Не настроен PAPERLESS_ONEC_ORIGINALS_UNC_ROOT для ссылки в 1С.",
+            },
+        )
+    if _paperless_tag_lock.locked():
+        return await _admin_v2_response(
+            request,
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            active_tab="system",
+            system_notice={"kind": "info", "text": "Обработка Paperless по тегу уже выполняется."},
+        )
+
+    factory = get_session_factory()
+
+    async def _run() -> None:
+        if _paperless_tag_lock.locked():
+            return
+        async with _paperless_tag_lock:
+            paperless_client = PaperlessTagClient(
+                base_url=settings.paperless_api_url,
+                token=settings.paperless_api_token,
+            )
+            try:
+                async with factory() as sync_session:
+                    result = await process_paperless_marked_documents(
+                        sync_session,
+                        client,
+                        paperless_client,
+                        settings,
+                    )
+                    log.info("Paperless tag sync from UI finished: %s", result)
+            except Exception:
+                log.exception("Paperless tag sync from UI failed")
+            finally:
+                await paperless_client.aclose()
+
+    background_tasks.add_task(_run)
+    return await _admin_v2_response(
+        request,
+        session,
+        operator=operator,
+        is_admin=is_admin,
+        active_tab="system",
+        system_notice={
+            "kind": "success",
+            "text": (
+                "Обработка Paperless по тегу запущена. "
+                f"Тег запуска: {settings.paperless_mark_tag_id}, тег ошибки: {settings.paperless_error_tag_id}."
             ),
         },
     )
