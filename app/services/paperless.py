@@ -159,6 +159,20 @@ async def process_paperless_event(
             if doc_number:
                 break
 
+    if doc_date is None:
+        return {
+            "status": "not_matched",
+            "reason": "no_doc_date",
+            "doc_number": doc_number,
+            "doc_date": doc_date_str,
+        }
+    if not doc_number:
+        return {
+            "status": "not_matched",
+            "reason": "no_doc_number",
+            "doc_date": doc_date_str,
+        }
+
     match = await find_matching_document(
         session,
         doc_date=doc_date,
@@ -167,12 +181,22 @@ async def process_paperless_event(
     if match is None:
         return {
             "status": "not_matched",
+            "reason": "no_mirror_match",
             "doc_number": doc_number,
-            "doc_date": doc_date_str,
+            "doc_date": doc_date.date().isoformat() if hasattr(doc_date, "date") else doc_date_str,
+        }
+
+    onec_link = (archive_path or "").strip()
+    if not onec_link:
+        return {
+            "status": "no_storage_path",
+            "reason": "archive_path missing",
+            "doc_number": doc_number,
+            "guid": str(match.guid),
+            "print_number": match.print_number,
         }
 
     now = datetime.now(UTC)
-    onec_link = archive_path or ""
 
     await session.execute(
         update(OneCDocument)
@@ -181,20 +205,25 @@ async def process_paperless_event(
             archive_processed_at=now,
             archive_storage_path=archive_path or None,
             archive_download_url=download_url or None,
-            kzv_copy_link=onec_link or None,
+            kzv_copy_link=onec_link,
         )
     )
     await session.commit()
 
-    if onec_link:
-        try:
-            await client.patch_storage_link(
-                match.guid, "Document_СчетФактураВыданный", onec_link
-            )
-        except Exception as exc:
-            log.warning("failed to patch 1C storage link for %s: %s", match.guid, exc)
-            if raise_on_patch_error:
-                raise
+    try:
+        await client.patch_storage_link(
+            match.guid, "Document_СчетФактураВыданный", onec_link
+        )
+    except Exception as exc:
+        log.warning("failed to patch 1C storage link for %s: %s", match.guid, exc)
+        if raise_on_patch_error:
+            raise
+        return {
+            "status": "onec_patch_failed",
+            "reason": str(exc),
+            "guid": str(match.guid),
+            "print_number": match.print_number,
+        }
 
     return {
         "status": "matched",

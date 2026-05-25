@@ -9,6 +9,7 @@ from app.db import get_session
 from app.deps import get_one_c_client
 from app.services.odata import OneCClient
 from app.services.paperless import process_paperless_batch, process_paperless_event
+from app.services.paperless_tag_sync import apply_paperless_webhook_tags
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -42,7 +43,8 @@ async def paperless_post_consume(
     session: AsyncSession = Depends(get_session),
     client: OneCClient = Depends(get_one_c_client),
 ) -> dict[str, Any]:
-    return await process_paperless_event(
+    settings = get_settings()
+    result = await process_paperless_event(
         session,
         client,
         doc_type=event.doc_type,
@@ -53,6 +55,13 @@ async def paperless_post_consume(
         archive_path=event.archive_path,
         download_url=event.download_url,
     )
+    if event.document_id:
+        result["tags"] = await apply_paperless_webhook_tags(
+            document_id=event.document_id,
+            result=result,
+            settings=settings,
+        )
+    return result
 
 
 @router.post("/paperless/batch")

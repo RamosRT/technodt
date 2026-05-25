@@ -87,6 +87,11 @@ class PaperlessTagClient:
         rows = await self._get_all("/api/documents/", params={"tags__id": tag_id, "ordering": "-created"})
         return rows[:limit]
 
+    async def fetch_document(self, document_id: int) -> dict[str, Any]:
+        resp = await self._client.get(f"/api/documents/{document_id}/")
+        resp.raise_for_status()
+        return resp.json()
+
     async def fetch_metadata(self, document_id: int) -> dict[str, Any]:
         resp = await self._client.get(f"/api/documents/{document_id}/metadata/")
         resp.raise_for_status()
@@ -126,6 +131,68 @@ def _document_tags(doc: dict[str, Any]) -> list[int]:
         if tag_id is not None:
             tags.append(tag_id)
     return tags
+
+
+def _tags_after_success(tags: list[int], settings: Settings) -> list[int]:
+    return _without_tag(
+        _without_tag(tags, settings.paperless_mark_tag_id),
+        settings.paperless_error_tag_id,
+    )
+
+
+def _tags_after_failure(tags: list[int], settings: Settings) -> list[int]:
+    return _with_tag(tags, settings.paperless_error_tag_id)
+
+
+# Post-consume webhook sets the error tag when 1C marking did not complete.
+WEBHOOK_FAILURE_STATUSES = frozenset({"not_matched", "onec_patch_failed", "no_storage_path"})
+
+
+async def apply_paperless_webhook_tags(
+    *,
+    document_id: int,
+    result: dict[str, Any],
+    settings: Settings,
+) -> dict[str, Any]:
+    """Update Paperless tags after post-consume webhook processing."""
+    if not settings.paperless_api_url or not settings.paperless_api_token:
+        return {"status": "skipped", "reason": "paperless_api_not_configured"}
+    if document_id <= 0:
+        return {"status": "skipped", "reason": "no_document_id"}
+
+    processing_status = result.get("status")
+    if processing_status == "skipped":
+        return {"status": "skipped", "reason": "not_invoice"}
+    if processing_status not in ("matched", *WEBHOOK_FAILURE_STATUSES):
+        return {"status": "skipped", "reason": f"unknown_result_{processing_status!r}"}
+
+    client = PaperlessTagClient(
+        base_url=settings.paperless_api_url,
+        token=settings.paperless_api_token,
+    )
+    try:
+        doc = await client.fetch_document(document_id)
+        current_tags = _document_tags(doc)
+        if processing_status == "matched":
+            new_tags = _tags_after_success(current_tags, settings)
+        else:
+            new_tags = _tags_after_failure(current_tags, settings)
+        if new_tags != current_tags:
+            await client.patch_document_tags(document_id, new_tags)
+        return {
+            "status": "updated",
+            "paperless_status": processing_status,
+            "tags": new_tags,
+        }
+    except Exception as exc:
+        log.exception(
+            "failed to update Paperless tags after webhook: document_id=%s result=%s",
+            document_id,
+            processing_status,
+        )
+        return {"status": "error", "error": str(exc)}
+    finally:
+        await client.aclose()
 
 
 async def process_paperless_marked_documents(
@@ -191,20 +258,17 @@ async def process_paperless_marked_documents(
                 **event,
             )
             if result.get("status") == "matched":
-                new_tags = _without_tag(
-                    _without_tag(tags, settings.paperless_mark_tag_id),
-                    settings.paperless_error_tag_id,
-                )
+                new_tags = _tags_after_success(tags, settings)
                 await paperless_client.patch_document_tags(document_id, new_tags)
                 counts["matched"] += 1
             else:
-                new_tags = _with_tag(tags, settings.paperless_error_tag_id)
+                new_tags = _tags_after_failure(tags, settings)
                 await paperless_client.patch_document_tags(document_id, new_tags)
                 counts[str(result.get("status", "not_matched"))] += 1
             items.append({"document_id": document_id, "status": result.get("status"), "result": result})
         except Exception as exc:
             log.exception("Paperless tagged document processing failed: document_id=%s", document_id)
-            new_tags = _with_tag(tags, settings.paperless_error_tag_id)
+            new_tags = _tags_after_failure(tags, settings)
             try:
                 await paperless_client.patch_document_tags(document_id, new_tags)
             except Exception:
