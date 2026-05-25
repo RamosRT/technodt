@@ -147,7 +147,6 @@ async def process_paperless_marked_documents(
         }
 
     type_map = await paperless_client.fetch_document_types()
-    correspondent_map = await paperless_client.fetch_correspondents()
     docs = await paperless_client.fetch_documents_with_tag(
         settings.paperless_mark_tag_id,
         limit=max(settings.paperless_poll_batch_size, 1),
@@ -180,7 +179,6 @@ async def process_paperless_marked_documents(
             "doc_date_str": doc.get("created") or doc.get("created_date"),
             "file_name": doc.get("title") or "",
             "original_filename": doc.get("original_file_name") or "",
-            "correspondent": _name_from_id(doc.get("correspondent"), correspondent_map),
             "archive_path": archive_path,
             "download_url": f"{settings.paperless_api_url.rstrip('/')}/api/documents/{document_id}/download/",
         }
