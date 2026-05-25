@@ -24,12 +24,15 @@
              {% if filters.only_without_envelope %}checked{% endif %}>
       Без конверта
     </label>
+    <label style="display:flex;align-items:center;gap:4px;font-size:.85em;cursor:pointer">
+      <input type="checkbox" name="only_without_edo" value="true"
+             {% if filters.only_without_edo %}checked{% endif %}>
+      Без ЭДО
+    </label>
     <button class="btn-primary" type="submit">
       <i data-lucide="search"></i> Найти
     </button>
-    <a class="btn-secondary"
-       href="/api/report/documents?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&number={{ filters.number }}&partner={{ filters.partner }}{% if filters.only_archived %}&only_archived=true{% endif %}{% if filters.only_without_envelope %}&only_without_envelope=true{% endif %}&page_size=10000&format=csv"
-       target="_blank">
+    <a class="btn-secondary" href="{{ csv_export_url }}" target="_blank">
       <i data-lucide="download"></i> CSV
     </a>
   </form>
@@ -71,7 +74,13 @@
           <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.partner_name or '' }}">{{ r.partner_name or '—' }}</td>
           <td style="text-align:center">{% if r.is_edo %}<span style="color:#2e7d32;font-weight:700">Да</span>{% endif %}</td>
           <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.registered_at.strftime('%d.%m %H:%M') if r.registered_at else '—' }}</td>
-          <td style="font-family:monospace;font-size:12px">{{ r.envelope_number or '—' }}</td>
+          <td style="font-family:monospace;font-size:12px;line-height:1.35">
+            {% if r.envelope_numbers %}
+              {% for num in r.envelope_numbers %}
+              <div>{{ num }}</div>
+              {% endfor %}
+            {% else %}—{% endif %}
+          </td>
           <td style="font-size:11px;color:#8895a7;white-space:nowrap">{{ r.sealed_at.strftime('%d.%m %H:%M') if r.sealed_at else '—' }}</td>
           <td style="font-size:12px">{{ r.origin_branch or '—' }}</td>
           <td style="font-size:11px;color:#8895a7">{{ r.created_by or '—' }}</td>

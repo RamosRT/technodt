@@ -33,6 +33,7 @@ from app.models import (
     Signer,
 )
 from app.parsing import optional_query_date
+from app.web_paths import app_url, resolve_app_root
 from app.schemas.printer import PrinterCreate, PrinterPatch
 from app.services import documents as doc_svc
 from app.services import operators as op_svc
@@ -48,6 +49,8 @@ from app.services.report import list_report_documents
 
 _TMPL_DIR = Path(__file__).parent.parent.parent / "web" / "templates"
 templates = Jinja2Templates(directory=str(_TMPL_DIR))
+templates.env.globals["app_root"] = resolve_app_root
+templates.env.globals["app_url"] = app_url
 
 STATUS_LABELS = {
     "draft": "Черновик",
@@ -824,6 +827,7 @@ async def ui_report(
     partner: str | None = None,
     only_archived: str | None = None,
     only_without_envelope: str | None = None,
+    only_without_edo: str | None = None,
     page: int = Query(default=1, ge=1),
     session: AsyncSession = Depends(get_session),
     operator: str | None = Depends(_operator),
@@ -835,6 +839,7 @@ async def ui_report(
     date_to = optional_query_date(date_to_raw)
     only_archived_bool = _is_truthy(only_archived)
     only_without_envelope_bool = _is_truthy(only_without_envelope)
+    only_without_edo_bool = _is_truthy(only_without_edo)
     page_size = 50
 
     items, total = await list_report_documents(
@@ -845,6 +850,7 @@ async def ui_report(
         number_search=number or None,
         only_archived=only_archived_bool,
         only_without_envelope=only_without_envelope_bool,
+        only_without_edo=only_without_edo_bool,
         page=page,
         page_size=page_size,
     )
@@ -852,18 +858,30 @@ async def ui_report(
     pages = max(1, (total + page_size - 1) // page_size)
 
     def _qs(**overrides):
-        params = {
-            "date_from": date_from.isoformat() if date_from else "",
-            "date_to": date_to.isoformat() if date_to else "",
-            "number": number or "",
-            "partner": partner or "",
-        }
+        params: dict[str, str] = {}
+        if date_from:
+            params["date_from"] = date_from.isoformat()
+        if date_to:
+            params["date_to"] = date_to.isoformat()
+        if number:
+            params["number"] = number
+        if partner:
+            params["partner"] = partner
         if only_archived_bool:
             params["only_archived"] = "true"
         if only_without_envelope_bool:
             params["only_without_envelope"] = "true"
+        if only_without_edo_bool:
+            params["only_without_edo"] = "true"
         params.update(overrides)
-        return "&".join(f"{k}={v}" for k, v in params.items() if v)
+        return "&".join(f"{k}={v}" for k, v in params.items())
+
+    csv_params = _qs(page_size="10000")
+    csv_export_url = app_url(request, "/api/report/documents")
+    if csv_params:
+        csv_export_url = f"{csv_export_url}?{csv_params}&format=csv"
+    else:
+        csv_export_url = f"{csv_export_url}?format=csv&page_size=10000"
 
     from app.schemas.report import ReportDocumentRow
     return templates.TemplateResponse(
@@ -884,7 +902,9 @@ async def ui_report(
                 "partner": partner or "",
                 "only_archived": only_archived_bool,
                 "only_without_envelope": only_without_envelope_bool,
+                "only_without_edo": only_without_edo_bool,
             },
+            "csv_export_url": csv_export_url,
             "pagination_prev_qs": _qs(page=str(page - 1)),
             "pagination_next_qs": _qs(page=str(page + 1)),
         },

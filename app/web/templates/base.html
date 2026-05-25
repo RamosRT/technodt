@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ТехноКонверт</title>
-<link rel="stylesheet" href="/static/style.css">
-<script src="/static/htmx.min.js" defer></script>
-<script src="/static/app.js" defer></script>
+<link rel="stylesheet" href="{{ app_url(request, '/static/style.css') }}">
+<script src="{{ app_url(request, '/static/htmx.min.js') }}" defer></script>
+<script src="{{ app_url(request, '/static/app.js') }}" defer></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer onload="lucide.createIcons()"></script>
 </head>
 <body class="{% if operator %}is-authenticated{% else %}is-login{% endif %}" hx-boost="false">
@@ -15,9 +15,9 @@
 
 {% if operator %}
 <nav class="ta-navbar">
-  <a class="ta-logo" href="/" title="На главную">
+  <a class="ta-logo" href="{{ app_url(request, '/') }}" title="На главную">
     <div class="ta-logo-icon">
-      <img src="/static/icon.png" alt="">
+      <img src="{{ app_url(request, '/static/icon.png') }}" alt="">
     </div>
     <span class="ta-logo-text">ТехноКонверт</span>
   </a>

@@ -73,6 +73,112 @@ async def test_documents_report_returns_local_document_and_success_mark(client, 
 
 
 @pytest.mark.asyncio
+async def test_documents_report_csv_export_without_date_filters(client, db_session):
+    operator = await ensure_operator(db_session, "report-user", password="1234")
+    client.cookies.set("operator_name", operator.username)
+
+    response = await client.get(
+        "/api/report/documents?format=csv&page_size=10000&date_from=&date_to="
+    )
+
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_documents_report_only_without_edo(client, db_session):
+    operator = await ensure_operator(db_session, "report-user", password="1234")
+    edo_guid = uuid.uuid4()
+    paper_guid = uuid.uuid4()
+    db_session.add_all(
+        [
+            OneCDocument(
+                guid=edo_guid,
+                number="000000201",
+                print_number="201",
+                doc_date=date(2026, 5, 1),
+                is_correction=False,
+                is_edo=True,
+                is_deleted=False,
+            ),
+            OneCDocument(
+                guid=paper_guid,
+                number="000000202",
+                print_number="202",
+                doc_date=date(2026, 5, 2),
+                is_correction=False,
+                is_edo=False,
+                is_deleted=False,
+            ),
+        ]
+    )
+    await db_session.commit()
+    client.cookies.set("operator_name", operator.username)
+
+    response = await client.get("/api/report/documents?only_without_edo=true")
+
+    assert response.status_code == 200
+    numbers = {row["number"] for row in response.json()["items"]}
+    assert numbers == {"202"}
+
+
+@pytest.mark.asyncio
+async def test_documents_report_lists_all_envelopes(client, db_session):
+    operator = await ensure_operator(db_session, "report-user", password="1234")
+    doc_guid = uuid.uuid4()
+    env_a = Envelope(number="ТА-100001", barcode="TA100001", status=EnvelopeStatus.sealed, created_by=operator.username)
+    env_b = Envelope(number="ТА-100002", barcode="TA100002", status=EnvelopeStatus.sealed, created_by=operator.username)
+    db_session.add_all(
+        [
+            OneCDocument(
+                guid=doc_guid,
+                number="000000301",
+                print_number="301",
+                doc_date=date(2026, 5, 10),
+                is_correction=False,
+                is_deleted=False,
+            ),
+            env_a,
+            env_b,
+        ]
+    )
+    await db_session.flush()
+    db_session.add_all(
+        [
+            EnvelopeDocument(
+                envelope_id=env_a.id,
+                doc_barcode="111",
+                doc_guid=doc_guid,
+                doc_entity="Document_СчетФактураВыданный",
+                doc_kind="УПД",
+                doc_number="301",
+                doc_date=date(2026, 5, 10),
+                raw_1c_payload={},
+            ),
+            EnvelopeDocument(
+                envelope_id=env_b.id,
+                doc_barcode="111",
+                doc_guid=doc_guid,
+                doc_entity="Document_СчетФактураВыданный",
+                doc_kind="УПД",
+                doc_number="301",
+                doc_date=date(2026, 5, 10),
+                raw_1c_payload={},
+            ),
+        ]
+    )
+    await db_session.commit()
+    client.cookies.set("operator_name", operator.username)
+
+    response = await client.get("/api/report/documents?number=301")
+
+    assert response.status_code == 200
+    row = response.json()["items"][0]
+    assert set(row["envelope_numbers"]) == {"ТА-100001", "ТА-100002"}
+    assert row["envelope_number"] == "ТА-100001, ТА-100002"
+
+
+@pytest.mark.asyncio
 async def test_documents_report_csv_export(client, db_session):
     operator = await ensure_operator(db_session, "report-user", password="1234")
     db_session.add(

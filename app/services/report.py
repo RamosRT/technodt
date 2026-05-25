@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -19,6 +19,54 @@ from app.models import (
 from app.services.odata import PROP_REGISTERED, PROP_SEALED, PROP_VERIFIED
 
 
+async def _fetch_envelopes_for_docs(
+    session: AsyncSession,
+    doc_guids: list[uuid.UUID],
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    if not doc_guids:
+        return {}
+
+    OriginBranch = aliased(Branch, name="origin_branch")
+    DestBranch = aliased(Branch, name="dest_branch")
+    stmt = (
+        select(
+            EnvelopeDocument.doc_guid,
+            EnvelopeDocument.added_at,
+            Envelope.number,
+            Envelope.sealed_at,
+            Envelope.verified_at,
+            Envelope.verified_by,
+            Envelope.created_by,
+            Envelope.status,
+            OriginBranch.name.label("origin_branch_name"),
+            DestBranch.name.label("dest_branch_name"),
+        )
+        .join(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
+        .outerjoin(OriginBranch, OriginBranch.id == Envelope.origin_branch_id)
+        .outerjoin(DestBranch, DestBranch.id == Envelope.destination_branch_id)
+        .where(EnvelopeDocument.doc_guid.in_(doc_guids))
+        .order_by(EnvelopeDocument.doc_guid, EnvelopeDocument.added_at)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    by_guid: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_guid.setdefault(row.doc_guid, []).append(
+            {
+                "envelope_number": row.number,
+                "registered_at": row.added_at,
+                "sealed_at": row.sealed_at,
+                "verified_at": row.verified_at,
+                "verified_by": row.verified_by,
+                "created_by": row.created_by,
+                "origin_branch": row.origin_branch_name,
+                "destination_branch": row.dest_branch_name,
+                "has_discrepancy": row.status == EnvelopeStatus.verified_with_discrepancy,
+            }
+        )
+    return by_guid
+
+
 async def list_report_documents(
     session: AsyncSession,
     *,
@@ -28,23 +76,10 @@ async def list_report_documents(
     number_search: str | None = None,
     only_archived: bool = False,
     only_without_envelope: bool = False,
+    only_without_edo: bool = False,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict[str, Any]], int]:
-    OriginBranch = aliased(Branch, name="origin_branch")
-    DestBranch = aliased(Branch, name="dest_branch")
-
-    # For each document, pick the earliest envelope (registration moment)
-    first_env_sub = (
-        select(
-            EnvelopeDocument.doc_guid,
-            func.min(EnvelopeDocument.added_at).label("registered_at"),
-        )
-        .group_by(EnvelopeDocument.doc_guid)
-        .subquery("first_env")
-    )
-
-    # Mark log subqueries — latest successful mark per property per doc
     def mark_sub(prop_key: uuid.UUID, label: str):
         return (
             select(
@@ -68,26 +103,10 @@ async def list_report_documents(
     stmt = (
         select(
             OneCDocument,
-            EnvelopeDocument,
-            Envelope,
-            OriginBranch.name.label("origin_branch_name"),
-            DestBranch.name.label("dest_branch_name"),
-            first_env_sub.c.registered_at,
             mark_reg.c.mark_reg,
             mark_seal.c.mark_seal,
             mark_ver.c.mark_ver,
         )
-        .outerjoin(first_env_sub, first_env_sub.c.doc_guid == OneCDocument.guid)
-        .outerjoin(
-            EnvelopeDocument,
-            and_(
-                EnvelopeDocument.doc_guid == OneCDocument.guid,
-                EnvelopeDocument.added_at == first_env_sub.c.registered_at,
-            ),
-        )
-        .outerjoin(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
-        .outerjoin(OriginBranch, OriginBranch.id == Envelope.origin_branch_id)
-        .outerjoin(DestBranch, DestBranch.id == Envelope.destination_branch_id)
         .outerjoin(mark_reg, mark_reg.c.doc_guid == OneCDocument.guid)
         .outerjoin(mark_seal, mark_seal.c.doc_guid == OneCDocument.guid)
         .outerjoin(mark_ver, mark_ver.c.doc_guid == OneCDocument.guid)
@@ -109,8 +128,15 @@ async def list_report_documents(
         )
     if only_archived:
         stmt = stmt.where(OneCDocument.archive_processed_at.is_not(None))
+    if only_without_edo:
+        stmt = stmt.where(OneCDocument.is_edo.is_(False))
     if only_without_envelope:
-        stmt = stmt.where(EnvelopeDocument.id.is_(None))
+        in_envelope = (
+            select(EnvelopeDocument.id)
+            .where(EnvelopeDocument.doc_guid == OneCDocument.guid)
+            .exists()
+        )
+        stmt = stmt.where(~in_envelope)
 
     count_stmt = stmt.with_only_columns(func.count(OneCDocument.guid)).order_by(None)
     total: int = (await session.execute(count_stmt)).scalar_one()
@@ -123,10 +149,15 @@ async def list_report_documents(
         )
     ).all()
 
+    doc_guids = [row.OneCDocument.guid for row in rows]
+    envelopes_by_guid = await _fetch_envelopes_for_docs(session, doc_guids)
+
     items: list[dict[str, Any]] = []
     for row in rows:
         doc: OneCDocument = row.OneCDocument
-        env: Envelope | None = row.Envelope
+        envs = envelopes_by_guid.get(doc.guid, [])
+        primary = envs[0] if envs else None
+        envelope_numbers = [e["envelope_number"] for e in envs if e.get("envelope_number")]
         items.append(
             {
                 "guid": doc.guid,
@@ -136,19 +167,17 @@ async def list_report_documents(
                 "partner_name": doc.partner_name,
                 "is_edo": doc.is_edo,
                 "related_realization_number": doc.related_realization_number,
-                "registered_at": row.registered_at,
-                "sealed_at": env.sealed_at if env else None,
-                "envelope_number": env.number if env else None,
-                "origin_branch": row.origin_branch_name,
-                "created_by": env.created_by if env else None,
-                "verified_at": env.verified_at if env else None,
-                "verified_by": env.verified_by if env else None,
-                "destination_branch": row.dest_branch_name,
-                "has_discrepancy": (
-                    env.status == EnvelopeStatus.verified_with_discrepancy
-                    if env
-                    else False
-                ),
+                "envelope_numbers": envelope_numbers,
+                "envelopes": envs,
+                "registered_at": primary["registered_at"] if primary else None,
+                "sealed_at": primary["sealed_at"] if primary else None,
+                "envelope_number": ", ".join(envelope_numbers) if envelope_numbers else None,
+                "origin_branch": primary["origin_branch"] if primary else None,
+                "created_by": primary["created_by"] if primary else None,
+                "verified_at": primary["verified_at"] if primary else None,
+                "verified_by": primary["verified_by"] if primary else None,
+                "destination_branch": primary["destination_branch"] if primary else None,
+                "has_discrepancy": any(e.get("has_discrepancy") for e in envs),
                 "mark_registered_at": row.mark_reg,
                 "mark_sealed_at": row.mark_seal,
                 "mark_verified_at": row.mark_ver,
@@ -171,7 +200,7 @@ def build_report_documents_csv(items: list[dict[str, Any]]) -> str:
             "Клиент",
             "ЭДО",
             "Зарегистрирован",
-            "Конверт",
+            "Конверты",
             "Запечатан",
             "Отправитель",
             "Оператор",

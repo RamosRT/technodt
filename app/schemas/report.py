@@ -2,7 +2,19 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class ReportEnvelopeRow(BaseModel):
+    envelope_number: str
+    registered_at: Optional[datetime] = None
+    sealed_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[str] = None
+    created_by: Optional[str] = None
+    origin_branch: Optional[str] = None
+    destination_branch: Optional[str] = None
+    has_discrepancy: bool = False
 
 
 class ReportDocumentRow(BaseModel):
@@ -15,6 +27,8 @@ class ReportDocumentRow(BaseModel):
     related_realization_number: Optional[str] = None
     registered_at: Optional[datetime] = None
     sealed_at: Optional[datetime] = None
+    envelope_numbers: list[str] = Field(default_factory=list)
+    envelopes: list[ReportEnvelopeRow] = Field(default_factory=list)
     envelope_number: Optional[str] = None
     origin_branch: Optional[str] = None
     created_by: Optional[str] = None
