@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections import Counter
-from pathlib import PureWindowsPath
 from typing import Any
 
 import httpx
@@ -10,36 +9,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.services.odata import OneCClient
 from app.services.paperless import process_paperless_event
+from app.services.paperless_paths import build_archive_path_from_metadata
 
 log = logging.getLogger(__name__)
 
 DEFAULT_INVOICE_TYPES = frozenset({"упд", "укд", "упд/укд"})
 _paperless_tag_lock = asyncio.Lock()
 
-
-def _normalize_unc_root(value: str) -> str:
-    return value.replace("/", "\\").rstrip("\\")
-
-
-def _join_unc(root: str, relative_path: str | None) -> str:
-    if not root or not relative_path:
-        return ""
-    return str(
-        PureWindowsPath(_normalize_unc_root(root))
-        / str(relative_path).replace("/", "\\").lstrip("\\")
-    )
-
-
-def build_archive_path_from_metadata(
-    metadata: dict[str, Any],
-    *,
-    originals_unc_root: str,
-    archive_unc_root: str = "",
-) -> str:
-    archive_root = archive_unc_root or originals_unc_root
-    if metadata.get("has_archive_version") and metadata.get("archive_media_filename"):
-        return _join_unc(archive_root, str(metadata["archive_media_filename"]))
-    return _join_unc(originals_unc_root, metadata.get("media_filename"))
+# Re-export for tests and scripts that import from this module.
+__all__ = [
+    "PaperlessTagClient",
+    "apply_paperless_webhook_tags",
+    "build_archive_path_from_metadata",
+    "process_paperless_marked_documents",
+    "resolve_archive_path_from_paperless",
+]
 
 
 class PaperlessTagClient:
@@ -100,6 +84,48 @@ class PaperlessTagClient:
     async def patch_document_tags(self, document_id: int, tags: list[int]) -> None:
         resp = await self._client.patch(f"/api/documents/{document_id}/", json={"tags": tags})
         resp.raise_for_status()
+
+
+async def resolve_archive_path_from_paperless(
+    document_id: int | None,
+    settings: Settings,
+    *,
+    client: PaperlessTagClient | None = None,
+) -> str:
+    """Fetch Paperless metadata and build UNC path for 1C kzvСсылкаНаКопию."""
+    if not document_id or document_id <= 0:
+        return ""
+    if not settings.paperless_api_url or not settings.paperless_api_token:
+        log.warning(
+            "cannot resolve Paperless archive path: API not configured (document_id=%s)",
+            document_id,
+        )
+        return ""
+    if not settings.paperless_onec_originals_unc_root:
+        log.warning(
+            "cannot resolve Paperless archive path: PAPERLESS_ONEC_ORIGINALS_UNC_ROOT missing"
+        )
+        return ""
+
+    owns_client = client is None
+    if owns_client:
+        client = PaperlessTagClient(
+            base_url=settings.paperless_api_url,
+            token=settings.paperless_api_token,
+        )
+    try:
+        metadata = await client.fetch_metadata(document_id)
+        return build_archive_path_from_metadata(
+            metadata,
+            originals_unc_root=settings.paperless_onec_originals_unc_root,
+            archive_unc_root=settings.paperless_onec_archive_unc_root,
+        )
+    except Exception:
+        log.exception("failed to fetch Paperless metadata for document_id=%s", document_id)
+        return ""
+    finally:
+        if owns_client and client is not None:
+            await client.aclose()
 
 
 def _int_or_none(value: Any) -> int | None:

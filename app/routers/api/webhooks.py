@@ -4,12 +4,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import get_session
 from app.deps import get_one_c_client
 from app.services.odata import OneCClient
 from app.services.paperless import process_paperless_batch, process_paperless_event
-from app.services.paperless_tag_sync import apply_paperless_webhook_tags
+from app.services.paperless_tag_sync import (
+    apply_paperless_webhook_tags,
+    resolve_archive_path_from_paperless,
+)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -36,6 +39,15 @@ class PaperlessEvent(BaseModel):
     tags: Optional[str] = None
 
 
+async def _archive_path_for_event(event: PaperlessEvent, settings: Settings) -> str | None:
+    """Prefer metadata.media_filename over hook-provided archive_path."""
+    if event.document_id:
+        resolved = await resolve_archive_path_from_paperless(event.document_id, settings)
+        if resolved:
+            return resolved
+    return event.archive_path
+
+
 @router.post("/paperless")
 async def paperless_post_consume(
     event: PaperlessEvent,
@@ -44,6 +56,7 @@ async def paperless_post_consume(
     client: OneCClient = Depends(get_one_c_client),
 ) -> dict[str, Any]:
     settings = get_settings()
+    archive_path = await _archive_path_for_event(event, settings)
     result = await process_paperless_event(
         session,
         client,
@@ -52,7 +65,7 @@ async def paperless_post_consume(
         file_name=event.file_name,
         original_filename=event.original_filename,
         correspondent=event.correspondent,
-        archive_path=event.archive_path,
+        archive_path=archive_path,
         download_url=event.download_url,
     )
     if event.document_id:
@@ -71,6 +84,10 @@ async def paperless_batch(
     session: AsyncSession = Depends(get_session),
     client: OneCClient = Depends(get_one_c_client),
 ) -> list[dict[str, Any]]:
-    return await process_paperless_batch(
-        session, client, [ev.model_dump() for ev in events]
-    )
+    settings = get_settings()
+    payload: list[dict[str, Any]] = []
+    for ev in events:
+        row = ev.model_dump()
+        row["archive_path"] = await _archive_path_for_event(ev, settings)
+        payload.append(row)
+    return await process_paperless_batch(session, client, payload)
