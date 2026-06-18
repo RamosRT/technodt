@@ -30,3 +30,19 @@ def build_archive_path_from_metadata(
     if metadata.get("has_archive_version") and metadata.get("archive_media_filename"):
         return join_unc(archive_root, str(metadata["archive_media_filename"]))
     return join_unc(originals_unc_root, metadata.get("media_filename"))
+
+
+def is_merged_pending(
+    *,
+    original_filename: str | None = None,
+    archive_path: str | None = None,
+    file_name: str | None = None,
+) -> bool:
+    """True when Paperless bulk_edit merge metadata is not yet safe for 1C storage link."""
+    orig = (original_filename or "").strip().casefold()
+    if orig.endswith("_merged.pdf"):
+        return True
+    for value in (archive_path, file_name):
+        if value and "(merged)" in value.casefold():
+            return True
+    return False

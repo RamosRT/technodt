@@ -20,6 +20,11 @@ _NUMBER_RE = re.compile(r"[№#]\s*([\w\-/]+)", re.IGNORECASE)
 _DATE_RE = re.compile(r"(?<!\d)(\d{2})\.(\d{2})\.(\d{4})(?!\d)")
 
 
+def is_invoice_doc_type(doc_type: str | None) -> bool:
+    """Public wrapper for Paperless document type whitelist (УПД/УКД)."""
+    return _is_invoice_type(doc_type)
+
+
 def _is_invoice_type(doc_type: str | None) -> bool:
     """Returns True only for known invoice types; False for Доверенность or unknown."""
     if not doc_type:

@@ -8,7 +8,8 @@ from app.config import Settings, get_settings
 from app.db import get_session
 from app.deps import get_one_c_client
 from app.services.odata import OneCClient
-from app.services.paperless import process_paperless_batch, process_paperless_event
+from app.services.paperless import is_invoice_doc_type, process_paperless_batch, process_paperless_event
+from app.services.paperless_paths import is_merged_pending
 from app.services.paperless_tag_sync import (
     apply_paperless_webhook_tags,
     resolve_archive_path_from_paperless,
@@ -57,6 +58,24 @@ async def paperless_post_consume(
 ) -> dict[str, Any]:
     settings = get_settings()
     archive_path = await _archive_path_for_event(event, settings)
+
+    if is_invoice_doc_type(event.doc_type) and is_merged_pending(
+        original_filename=event.original_filename,
+        archive_path=archive_path,
+        file_name=event.file_name,
+    ):
+        result: dict[str, Any] = {
+            "status": "deferred",
+            "reason": "merged_metadata_pending",
+        }
+        if event.document_id:
+            result["tags"] = await apply_paperless_webhook_tags(
+                document_id=event.document_id,
+                result=result,
+                settings=settings,
+            )
+        return result
+
     result = await process_paperless_event(
         session,
         client,

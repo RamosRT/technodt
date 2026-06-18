@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.services.paperless_paths import build_archive_path_from_metadata
+from app.services.paperless_paths import build_archive_path_from_metadata, is_merged_pending
 from app.services.paperless_tag_sync import resolve_archive_path_from_paperless
 
 
@@ -40,3 +40,20 @@ async def test_resolve_archive_path_fetches_metadata():
 
     assert path == r"\\kaz-pc036\Техно-Архив\2026\04\30.04.2026 УПД № УТ-3727 Эгида+_05.pdf"
     client.fetch_metadata.assert_awaited_once_with(29858)
+
+
+def test_is_merged_pending_by_original_filename():
+    assert is_merged_pending(original_filename="30075_29553_merged.pdf") is True
+
+
+def test_is_merged_pending_by_archive_path():
+    assert is_merged_pending(
+        archive_path=r"\\kaz-pc036\Техно-Архив\2025\11\doc (merged).pdf",
+    ) is True
+
+
+def test_is_merged_pending_false_for_final_path():
+    assert is_merged_pending(
+        original_filename="2025/11/25.11.2025 УПД № УТ-13995 Глобус_02.pdf",
+        archive_path=r"\\kaz-pc036\Техно-Архив\2025\11\25.11.2025 УПД № УТ-13995 Глобус_02.pdf",
+    ) is False

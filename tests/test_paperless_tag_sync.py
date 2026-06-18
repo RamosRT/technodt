@@ -128,3 +128,32 @@ async def test_process_marked_documents_sets_error_tag_on_failure(db_session):
 
     assert result["counts"] == {"not_matched": 1}
     assert paperless.patched_tags == [(1997, [52, 53])]
+
+
+async def test_process_marked_documents_defers_when_path_still_merged(db_session):
+    paperless = FakePaperlessClient(
+        docs=[
+            {
+                "id": 30076,
+                "title": "24.04.2026 УПД № УТ-3486 СОЛЛЕРС АЛАБУГА ООО (merged)",
+                "document_type": 1,
+                "created": "2026-04-24",
+                "correspondent": 2,
+                "original_file_name": "30075_29553_merged.pdf",
+                "tags": [52],
+            }
+        ],
+        metadata={
+            30076: {
+                "has_archive_version": False,
+                "media_filename": "2025/11/doc (merged).pdf",
+            }
+        },
+    )
+    onec = SimpleNamespace(patch_storage_link=AsyncMock(return_value=None))
+
+    result = await process_paperless_marked_documents(db_session, onec, paperless, _settings())
+
+    assert result["counts"] == {"deferred": 1}
+    assert paperless.patched_tags == []
+    onec.patch_storage_link.assert_not_awaited()

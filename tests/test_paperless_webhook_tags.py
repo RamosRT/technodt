@@ -77,3 +77,27 @@ async def test_webhook_tags_no_document_id():
         settings=_settings(),
     )
     assert out["reason"] == "no_document_id"
+
+
+@pytest.mark.asyncio
+async def test_webhook_tags_sets_mark_tag_on_deferred():
+    client = AsyncMock()
+    client.fetch_document.return_value = {"id": 30076, "tags": [10]}
+    client.patch_document_tags = AsyncMock()
+    client.aclose = AsyncMock()
+
+    with patch(
+        "app.services.paperless_tag_sync.PaperlessTagClient",
+        return_value=client,
+    ):
+        out = await apply_paperless_webhook_tags(
+            document_id=30076,
+            result={"status": "deferred", "reason": "merged_metadata_pending"},
+            settings=_settings(),
+        )
+
+    assert out["status"] == "updated"
+    assert out["paperless_status"] == "deferred"
+    assert 7 in out["tags"]
+    assert 10 in out["tags"]
+    client.patch_document_tags.assert_awaited_once_with(30076, [10, 7])

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.services.odata import OneCClient
 from app.services.paperless import process_paperless_event
-from app.services.paperless_paths import build_archive_path_from_metadata
+from app.services.paperless_paths import build_archive_path_from_metadata, is_merged_pending
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ __all__ = [
     "PaperlessTagClient",
     "apply_paperless_webhook_tags",
     "build_archive_path_from_metadata",
+    "is_merged_pending",
     "process_paperless_marked_documents",
     "resolve_archive_path_from_paperless",
 ]
@@ -170,6 +171,14 @@ def _tags_after_failure(tags: list[int], settings: Settings) -> list[int]:
     return _with_tag(tags, settings.paperless_error_tag_id)
 
 
+def _tags_after_deferred(tags: list[int], settings: Settings) -> list[int]:
+    """Queue merged document for tag-sync; clear error tag if present."""
+    return _with_tag(
+        _without_tag(tags, settings.paperless_error_tag_id),
+        settings.paperless_mark_tag_id,
+    )
+
+
 # Post-consume webhook sets the error tag when 1C marking did not complete.
 WEBHOOK_FAILURE_STATUSES = frozenset({"not_matched", "onec_patch_failed", "no_storage_path"})
 
@@ -189,7 +198,7 @@ async def apply_paperless_webhook_tags(
     processing_status = result.get("status")
     if processing_status == "skipped":
         return {"status": "skipped", "reason": "not_invoice"}
-    if processing_status not in ("matched", *WEBHOOK_FAILURE_STATUSES):
+    if processing_status not in ("matched", "deferred", *WEBHOOK_FAILURE_STATUSES):
         return {"status": "skipped", "reason": f"unknown_result_{processing_status!r}"}
 
     client = PaperlessTagClient(
@@ -201,6 +210,8 @@ async def apply_paperless_webhook_tags(
         current_tags = _document_tags(doc)
         if processing_status == "matched":
             new_tags = _tags_after_success(current_tags, settings)
+        elif processing_status == "deferred":
+            new_tags = _tags_after_deferred(current_tags, settings)
         else:
             new_tags = _tags_after_failure(current_tags, settings)
         if new_tags != current_tags:
@@ -266,6 +277,20 @@ async def process_paperless_marked_documents(
             originals_unc_root=settings.paperless_onec_originals_unc_root,
             archive_unc_root=settings.paperless_onec_archive_unc_root,
         )
+        if is_merged_pending(
+            original_filename=doc.get("original_file_name"),
+            archive_path=archive_path,
+            file_name=doc.get("title"),
+        ):
+            counts["deferred"] += 1
+            items.append(
+                {
+                    "document_id": document_id,
+                    "status": "deferred",
+                    "reason": "merged_metadata_pending",
+                }
+            )
+            continue
 
         event = {
             "doc_type": doc_type,
