@@ -62,18 +62,22 @@
         <em>+{{ dashboard.new_envelopes_today }} за сегодня</em>
       </div>
     </section>
-    <section class="kpi-card kpi-clickable"
+    <section class="kpi-card{% if is_admin %} kpi-clickable{% endif %}"
+             {% if is_admin %}
              hx-get="/ui/documents?status=in_transit" hx-target="#main-area" hx-swap="innerHTML"
-             onclick="setMode('idle')">
+             onclick="setMode('idle')"
+             {% endif %}>
       <div class="kpi-icon kpi-amber"><i data-lucide="clock-3"></i></div>
       <div class="kpi-text">
         <span>Ожидают проверки</span>
         <strong>{{ dashboard.awaiting_verification_total }}</strong>
       </div>
     </section>
-    <section class="kpi-card kpi-clickable"
+    <section class="kpi-card{% if is_admin %} kpi-clickable{% endif %}"
+             {% if is_admin %}
              hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
-             onclick="setMode('idle')">
+             onclick="setMode('idle')"
+             {% endif %}>
       <div class="kpi-icon kpi-green"><i data-lucide="file-check-2"></i></div>
       <div class="kpi-text">
         <span>Всего документов</span>
@@ -81,9 +85,11 @@
         <em>+{{ dashboard.documents_today }} за сегодня</em>
       </div>
     </section>
-    <section class="kpi-card kpi-clickable"
+    <section class="kpi-card{% if is_admin %} kpi-clickable{% endif %}"
+             {% if is_admin %}
              hx-get="/ui/documents?status=missing" hx-target="#main-area" hx-swap="innerHTML"
-             onclick="setMode('idle')">
+             onclick="setMode('idle')"
+             {% endif %}>
       <div class="kpi-icon kpi-red"><i data-lucide="shield-alert"></i></div>
       <div class="kpi-text">
         <span>Ошибки / исключения</span>
@@ -124,9 +130,11 @@
     <section class="ops-card">
       <header>
         <h3>Последние документы</h3>
+        {% if is_admin %}
         <button type="button" class="ops-open-btn"
                 hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
                 onclick="setMode('idle')"><i data-lucide="chevron-right"></i></button>
+        {% endif %}
       </header>
       <table class="ops-table">
         <thead><tr><th>Документ</th><th>Конверт</th><th>Добавлен</th><th>Статус</th></tr></thead>
@@ -143,9 +151,11 @@
           {% endfor %}
         </tbody>
       </table>
+      {% if is_admin %}
       <a class="ops-link" href="/"
          hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
          onclick="setMode('idle')"><span>Перейти к документам</span><i data-lucide="arrow-right"></i></a>
+      {% endif %}
     </section>
 
     {% if is_admin %}

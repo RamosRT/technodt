@@ -85,3 +85,14 @@ async def test_logout_clears_cookie(client, db_session):
 
     assert r.status_code == 204
     assert "operator_name" not in client.cookies
+
+
+@pytest.mark.asyncio
+async def test_ui_documents_requires_admin(client, db_session):
+    await ensure_operator(db_session, "Оператор", password="1234")
+    await db_session.commit()
+    await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
+
+    r = await client.get("/ui/documents")
+
+    assert r.status_code == 403

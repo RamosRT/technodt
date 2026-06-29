@@ -42,8 +42,19 @@ async def test_resolve_archive_path_fetches_metadata():
     client.fetch_metadata.assert_awaited_once_with(29858)
 
 
-def test_is_merged_pending_by_original_filename():
+def test_is_merged_pending_by_original_filename_without_archive_path():
     assert is_merged_pending(original_filename="30075_29553_merged.pdf") is True
+
+
+def test_is_merged_pending_false_when_archive_path_final_despite_merged_original():
+    assert is_merged_pending(
+        original_filename="29433_29432_merged.pdf",
+        archive_path=(
+            r"\\kaz-pc036\Техно-Архив\2026\04\20.04.2026 УПД № УТ-3257 "
+            r"Общество с ограниченной ответственностью Специализированный застройщик -ДОМКОР-_02.pdf"
+        ),
+        file_name="20.04.2026 УПД № УТ-3257 Общество с ограниченной ответственностью Специализированный застройщик -ДОМКОР-",
+    ) is False
 
 
 def test_is_merged_pending_by_archive_path():

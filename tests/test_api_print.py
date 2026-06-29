@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models import OneCDocument
 from app.services.odata import NormalizedDocument
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -80,6 +81,42 @@ async def test_print_inventory_returns_pdf(client, stub_one_c):
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/pdf"
     assert r.content == FAKE_PDF
+
+
+@pytest.mark.asyncio
+async def test_print_inventory_enriches_local_cache_fields(client, db_session, stub_one_c):
+    env = await _sealed_envelope(client)
+    guid = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    db_session.add(
+        OneCDocument(
+            guid=guid,
+            number="UT-4706",
+            print_number="УТ-4706",
+            doc_date=date(2026, 5, 29),
+            is_correction=False,
+            partner_name="ООО Тестовый клиент",
+            is_edo=False,
+            related_realization_number="РТ-12345",
+            is_deleted=False,
+        )
+    )
+    await db_session.commit()
+
+    rendered = {}
+
+    async def fake_pdf(html: str) -> bytes:
+        rendered["html"] = html
+        return FAKE_PDF
+
+    with (
+        patch("app.services.printing._html_to_pdf", side_effect=fake_pdf),
+        patch("app.services.printing.generate_barcode_svg", return_value=FAKE_SVG),
+    ):
+        r = await client.get(f"/api/envelopes/{env['id']}/print/inventory")
+
+    assert r.status_code == 200
+    assert "ООО Тестовый клиент" in rendered["html"]
+    assert "РТ-12345" in rendered["html"]
 
 
 @pytest.mark.asyncio

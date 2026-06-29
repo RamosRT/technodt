@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select
 
-from app.models import AuditLog, Envelope, EnvelopeDocument, EnvelopeStatus
+from app.models import AuditLog, Envelope, EnvelopeDocument, EnvelopeStatus, OneCDocument
 from app.services import envelopes as svc
 from app.services.odata import NormalizedDocument
 
@@ -118,6 +118,41 @@ async def test_add_document_happy_path(db_session):
     assert doc.doc_number == "ПЕР-000123"
     assert doc.doc_barcode == barcode
     assert doc.raw_1c_payload == {"Number": "ПЕР-000123", "Date": "2026-04-20T00:00:00"}
+
+
+@pytest.mark.asyncio
+async def test_add_document_from_local_cache_includes_partner_in_payload(db_session):
+    guid = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    db_session.add(
+        OneCDocument(
+            guid=guid,
+            number="UT-4706",
+            print_number="УТ-4706",
+            doc_date=_date(2026, 5, 29),
+            is_correction=False,
+            partner_name="ООО Тестовый клиент",
+            is_edo=False,
+            related_realization_number="РТ-12345",
+            is_deleted=False,
+        )
+    )
+    env = await svc.create_envelope(db_session, operator="A")
+    await db_session.commit()
+
+    one_c = AsyncMock()
+    barcode = str(int.from_bytes(guid.bytes, "big"))
+    doc = await svc.add_document(
+        db_session,
+        envelope=env,
+        barcode=barcode,
+        operator="A",
+        one_c=one_c,
+    )
+    await db_session.commit()
+
+    assert doc.related_realization_number == "РТ-12345"
+    assert doc.raw_1c_payload["Партнер"]["НаименованиеПолное"] == "ООО Тестовый клиент"
+    one_c.lookup_document_with_related.assert_not_awaited()
 
 
 @pytest.mark.asyncio

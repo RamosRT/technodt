@@ -778,6 +778,8 @@ async def ui_documents_list(
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    if not is_admin:
+        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     branch_uuid = _optional_uuid(branch_id)
     date_from = optional_query_date(date_from_raw)
     date_to = optional_query_date(date_to_raw)

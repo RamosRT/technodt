@@ -39,10 +39,11 @@ def is_merged_pending(
     file_name: str | None = None,
 ) -> bool:
     """True when Paperless bulk_edit merge metadata is not yet safe for 1C storage link."""
-    orig = (original_filename or "").strip().casefold()
-    if orig.endswith("_merged.pdf"):
-        return True
     for value in (archive_path, file_name):
         if value and "(merged)" in value.casefold():
             return True
-    return False
+    if (archive_path or "").strip():
+        # Paperless keeps original_file_name as *_merged.pdf even after media_filename is final.
+        return False
+    orig = (original_filename or "").strip().casefold()
+    return orig.endswith("_merged.pdf")

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.branch import Branch
+from app.models.onec_document import OneCDocument
 from app.models.printer import Printer
 from app.models.signer import Signer
 from app.services.envelopes import get_by_id
@@ -130,6 +131,31 @@ async def _load_related(session: AsyncSession, envelope) -> dict:
     }
 
 
+async def _inventory_documents(session: AsyncSession, envelope) -> list:
+    """Return envelope documents enriched with locally synced 1C fields."""
+    documents = list(envelope.documents)
+    doc_guids = [doc.doc_guid for doc in documents]
+    if not doc_guids:
+        return documents
+
+    rows = (
+        await session.execute(
+            select(OneCDocument).where(OneCDocument.guid.in_(doc_guids))
+        )
+    ).scalars().all()
+    by_guid = {row.guid: row for row in rows}
+
+    for doc in documents:
+        cached = by_guid.get(doc.doc_guid)
+        if cached is None:
+            continue
+        if not doc.related_realization_number and cached.related_realization_number:
+            doc.related_realization_number = cached.related_realization_number
+        if cached.partner_name:
+            doc.partner_name = cached.partner_name
+    return documents
+
+
 # ── public async API ─────────────────────────────────────────────────────────
 
 
@@ -139,7 +165,7 @@ async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) ->
 
     ctx = dict(
         envelope=envelope,
-        documents=list(envelope.documents),
+        documents=await _inventory_documents(session, envelope),
         # Screen/PDF scanners usually need thicker bars and more quiet zone.
         barcode_svg=generate_barcode_svg(
             envelope.barcode,

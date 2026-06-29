@@ -267,7 +267,8 @@
   </thead>
   <tbody>
     {% for doc in documents %}
-    {% set partner_name = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
+    {% set payload_partner = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
+    {% set partner_name = doc.partner_name | default(None) or payload_partner %}
     {% set receiver_name = doc.raw_1c_payload.get('СкладПолучатель', {}).get('Description') if doc.raw_1c_payload else None %}
     <tr>
       <td class="col-num">{{ loop.index }}</td>

@@ -20,7 +20,7 @@ from app.exceptions import (
 from app.models import AuditLog, Branch, Envelope, EnvelopeDocument, EnvelopeStatus, OneCDocument, Signer
 from app.services.audit import write_event
 from app.services.barcode import doc_barcode_to_guid, generate_envelope_codes
-from app.services.odata import OneCClient
+from app.services.odata import NormalizedDocument, OneCClient
 
 MAX_CODE_RETRIES = 5
 
@@ -261,8 +261,7 @@ async def get_by_barcode(session: AsyncSession, barcode: str) -> Envelope:
 
 async def _lookup_from_local_cache(
     session: AsyncSession, guid: uuid.UUID
-) -> "NormalizedDocument | None":
-    from app.services.odata import NormalizedDocument
+) -> NormalizedDocument | None:
     doc = await session.get(OneCDocument, guid)
     if doc is not None and doc.is_deleted:
         log.warning(
@@ -270,20 +269,23 @@ async def _lookup_from_local_cache(
         )
     if doc is None or doc.is_deleted:
         return None
+    raw_payload = {
+        "_source": "local_cache",
+        "Ref_Key": str(guid),
+        "Number": doc.number,
+        "ПредставлениеНомера": doc.print_number,
+        "Date": doc.doc_date.isoformat() + "T00:00:00",
+        "Корректировочный": doc.is_correction,
+    }
+    if doc.partner_name:
+        raw_payload["Партнер"] = {"НаименованиеПолное": doc.partner_name}
     return NormalizedDocument(
         entity="Document_СчетФактураВыданный",
         doc_kind="УКД" if doc.is_correction else "УПД",
         doc_number=doc.print_number,
         doc_date=doc.doc_date,
         related_realization_ref=None,
-        raw_payload={
-            "_source": "local_cache",
-            "Ref_Key": str(guid),
-            "Number": doc.number,
-            "ПредставлениеНомера": doc.print_number,
-            "Date": doc.doc_date.isoformat() + "T00:00:00",
-            "Корректировочный": doc.is_correction,
-        },
+        raw_payload=raw_payload,
         partner_name=doc.partner_name,
         related_realization_number=doc.related_realization_number,
         related_realization_date=None,

@@ -157,3 +157,51 @@ async def test_process_marked_documents_defers_when_path_still_merged(db_session
     assert result["counts"] == {"deferred": 1}
     assert paperless.patched_tags == []
     onec.patch_storage_link.assert_not_awaited()
+
+
+async def test_process_marked_documents_marks_merged_original_when_archive_path_final(db_session):
+    guid = uuid.uuid4()
+    db_session.add(
+        OneCDocument(
+            guid=guid,
+            number="ТАУТ-0003257",
+            print_number="УТ-3257",
+            doc_date=date(2026, 4, 20),
+            is_correction=False,
+            partner_name='ООО "ДОМКОР"',
+            is_edo=False,
+            is_deleted=False,
+        )
+    )
+    await db_session.commit()
+
+    final_media = (
+        "2026/04/20.04.2026 УПД № УТ-3257 Общество с ограниченной ответственностью "
+        "Специализированный застройщик -ДОМКОР-_02.pdf"
+    )
+    paperless = FakePaperlessClient(
+        docs=[
+            {
+                "id": 30100,
+                "title": "20.04.2026 УПД № УТ-3257 ДОМКОР",
+                "document_type": 1,
+                "created": "2026-04-20",
+                "correspondent": 2,
+                "original_file_name": "29433_29432_merged.pdf",
+                "tags": [52],
+            }
+        ],
+        metadata={
+            30100: {
+                "has_archive_version": False,
+                "media_filename": final_media,
+            }
+        },
+    )
+    onec = SimpleNamespace(patch_storage_link=AsyncMock(return_value=None))
+
+    result = await process_paperless_marked_documents(db_session, onec, paperless, _settings())
+
+    assert result["counts"] == {"matched": 1}
+    assert paperless.patched_tags == [(30100, [])]
+    onec.patch_storage_link.assert_awaited_once()
