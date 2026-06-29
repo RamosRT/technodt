@@ -47,7 +47,13 @@ def test_render_label_zpl_embeds_barcode_value():
 def test_render_label_zpl_embeds_envelope_number():
     env = _env(number="ТА-9876543210987654")
     zpl = render_label_zpl(env, dpi=200)
-    assert "ТА-9876543210987654" in zpl
+    assert "TA-9876543210987654" in zpl
+
+
+def test_render_label_zpl_hides_hri_text():
+    zpl = render_label_zpl(_env(), dpi=200)
+    assert "^BCN,205,N,N,N" in zpl
+    assert "^BCN,150,Y,N,N" not in zpl
 
 
 def test_render_label_zpl_unsupported_dpi_raises():
