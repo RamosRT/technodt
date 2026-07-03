@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import uuid
 from datetime import UTC, datetime
+from html import escape
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -18,6 +19,7 @@ from app.models.onec_document import OneCDocument
 from app.models.printer import Printer
 from app.models.signer import Signer
 from app.services.envelopes import get_by_id
+from app.services.odata import MARK_ELIGIBLE_ENTITIES, OneCClient
 
 _TEMPLATES = Path(__file__).parent.parent / "web" / "templates"
 _SUPPORTED_ZPL_DPI = {200, 300}
@@ -30,7 +32,7 @@ def _jinja_env() -> Environment:
 # ── thin wrappers (mocked in tests) ──────────────────────────────────────────
 
 
-def _render_pdf_sync(html_str: str) -> bytes:
+def _render_pdf_sync(html_str: str, *, footer_template: str | None = None) -> bytes:
     """Render HTML to PDF via playwright sync API.
 
     Must run in a thread (via asyncio.to_thread) because sync_playwright
@@ -43,13 +45,54 @@ def _render_pdf_sync(html_str: str) -> bytes:
         browser = pw.chromium.launch()
         page = browser.new_page()
         page.set_content(html_str, wait_until="networkidle")
-        pdf = page.pdf(prefer_css_page_size=True, print_background=True)
+        pdf_options = {
+            "prefer_css_page_size": True,
+            "print_background": True,
+        }
+        if footer_template is not None:
+            pdf_options.update(
+                {
+                    "display_header_footer": True,
+                    "header_template": "<div></div>",
+                    "footer_template": footer_template,
+                }
+            )
+        pdf = page.pdf(**pdf_options)
         browser.close()
         return pdf
 
 
-async def _html_to_pdf(html_str: str) -> bytes:
-    return await asyncio.to_thread(_render_pdf_sync, html_str)
+async def _html_to_pdf(html_str: str, *, footer_template: str | None = None) -> bytes:
+    return await asyncio.to_thread(
+        _render_pdf_sync, html_str, footer_template=footer_template
+    )
+
+
+def _inventory_footer_template(print_date: datetime) -> str:
+    text = f"Конверт-трек · Сформировано {print_date.strftime('%d.%m.%Y %H:%M')}"
+    return f"""
+<style>
+  html,
+  body {{
+    margin: 0;
+    padding: 0;
+    width: 100%;
+  }}
+
+  .inventory-footer {{
+    box-sizing: border-box;
+    width: calc(100% - 35mm);
+    margin: 0 15mm 5mm 20mm;
+    padding-top: 2mm;
+    border-top: 0.5pt solid #ccc;
+    color: #888;
+    font-family: Arial, sans-serif;
+    font-size: 7pt;
+    text-align: center;
+  }}
+</style>
+<div class="inventory-footer">{escape(text)}</div>
+"""
 
 
 def generate_barcode_svg(
@@ -131,7 +174,12 @@ async def _load_related(session: AsyncSession, envelope) -> dict:
     }
 
 
-async def _inventory_documents(session: AsyncSession, envelope) -> list:
+async def _inventory_documents(
+    session: AsyncSession,
+    envelope,
+    *,
+    one_c: OneCClient | None = None,
+) -> list:
     """Return envelope documents enriched with locally synced 1C fields."""
     documents = list(envelope.documents)
     doc_guids = [doc.doc_guid for doc in documents]
@@ -147,25 +195,48 @@ async def _inventory_documents(session: AsyncSession, envelope) -> list:
 
     for doc in documents:
         cached = by_guid.get(doc.doc_guid)
-        if cached is None:
-            continue
-        if not doc.related_realization_number and cached.related_realization_number:
+        if cached is not None and not doc.related_realization_number and cached.related_realization_number:
             doc.related_realization_number = cached.related_realization_number
-        if cached.partner_name:
+        if cached is not None and cached.partner_name:
             doc.partner_name = cached.partner_name
+        if one_c is None:
+            continue
+        if doc.related_realization_number:
+            continue
+        if doc.doc_entity not in MARK_ELIGIBLE_ENTITIES:
+            continue
+        try:
+            normalized = await one_c.lookup_document_with_related(doc.doc_guid)
+        except Exception:
+            continue
+        if normalized.related_realization_number:
+            doc.related_realization_number = normalized.related_realization_number
+            doc.related_realization_date = normalized.related_realization_date
+            if cached is not None:
+                cached.related_realization_number = normalized.related_realization_number
+        if normalized.partner_name:
+            doc.partner_name = normalized.partner_name
+            if cached is not None:
+                cached.partner_name = normalized.partner_name
     return documents
 
 
 # ── public async API ─────────────────────────────────────────────────────────
 
 
-async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) -> bytes:
+async def render_inventory_pdf(
+    session: AsyncSession,
+    envelope_id: uuid.UUID,
+    *,
+    one_c: OneCClient | None = None,
+) -> bytes:
     envelope = await get_by_id(session, envelope_id)
     related = await _load_related(session, envelope)
 
+    print_date = datetime.now(UTC)
     ctx = dict(
         envelope=envelope,
-        documents=await _inventory_documents(session, envelope),
+        documents=await _inventory_documents(session, envelope, one_c=one_c),
         # Screen/PDF scanners usually need thicker bars and more quiet zone.
         barcode_svg=generate_barcode_svg(
             envelope.barcode,
@@ -173,11 +244,13 @@ async def render_inventory_pdf(session: AsyncSession, envelope_id: uuid.UUID) ->
             module_height=16.0,
             quiet_zone=4.0,
         ),
-        print_date=datetime.now(UTC),
+        print_date=print_date,
         **related,
     )
     html_str = _jinja_env().get_template("print/inventory.html").render(**ctx)
-    return await _html_to_pdf(html_str)
+    return await _html_to_pdf(
+        html_str, footer_template=_inventory_footer_template(print_date)
+    )
 
 
 def _win32print_send(share_name: str, data: bytes, *, host: str) -> None:
@@ -263,12 +336,14 @@ async def send_inventory_to_a4_printer(
     session: AsyncSession,
     envelope_id: uuid.UUID,
     printer: Printer,
+    *,
+    one_c: OneCClient | None = None,
 ) -> None:
     if printer.kind != "a4" or not printer.share_name:
         from app.exceptions import AppError
 
         raise AppError("Опись доступна только для A4-принтера", status_code=400, code="printer_not_a4")
-    pdf_bytes = await render_inventory_pdf(session, envelope_id)
+    pdf_bytes = await render_inventory_pdf(session, envelope_id, one_c=one_c)
     settings = get_settings()
     printer_path = printer.share_name
     if settings.print_server_host and not printer_path.startswith("\\\\"):

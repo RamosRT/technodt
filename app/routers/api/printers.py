@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin, require_operator
 from app.db import get_session
+from app.deps import get_one_c_client
 from app.exceptions import AppError
 from app.schemas.printer import PrinterCreate, PrinterListResponse, PrinterOut, PrinterPatch
 from app.services import envelopes as envelope_svc
 from app.services import printers as printer_svc
 from app.services import printing
+from app.services.odata import OneCClient
 
 router = APIRouter(tags=["printers"])
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -90,10 +92,12 @@ async def send_inventory_to_printer(
     envelope_id: uuid.UUID,
     printer_id: PrinterIdQuery,
     session: SessionDep,
+    one_c: OneCClient = Depends(get_one_c_client),
     _operator: str = require_operator(),
 ):
     printer = await printer_svc.get_printer(session, printer_id, active_only=True)
     if printer.kind != "a4":
         raise AppError("Опись доступна только для A4-принтера", status_code=400, code="printer_not_a4")
-    await printing.send_inventory_to_a4_printer(session, envelope_id, printer)
+    await printing.send_inventory_to_a4_printer(session, envelope_id, printer, one_c=one_c)
+    await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

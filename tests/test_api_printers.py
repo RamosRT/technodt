@@ -74,7 +74,7 @@ async def test_inventory_send_calls_a4_sender(client, db_session, monkeypatch):
     await db_session.commit()
     calls = []
 
-    async def fake_send(session, envelope_id, printer):
+    async def fake_send(session, envelope_id, printer, *, one_c=None):
         calls.append((envelope_id, printer.id))
 
     monkeypatch.setattr("app.services.printing.send_inventory_to_a4_printer", fake_send)

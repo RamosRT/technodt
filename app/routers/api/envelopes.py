@@ -160,8 +160,10 @@ async def unseal_envelope(
 async def print_inventory(
     envelope_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
+    one_c: OneCClient = Depends(get_one_c_client),
 ):
-    pdf = await printing.render_inventory_pdf(session, envelope_id)
+    pdf = await printing.render_inventory_pdf(session, envelope_id, one_c=one_c)
+    await session.commit()
     envelope = await svc.get_by_id(session, envelope_id)
     filename = f"inventory_{envelope.number.replace('ТА-', 'TA-')}.pdf"
     return Response(

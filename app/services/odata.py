@@ -81,6 +81,12 @@ class RelatedRef:
     entity: str
 
 
+@dataclass(frozen=True)
+class RealizationSummary:
+    number: str
+    doc_date: date
+
+
 @dataclass
 class NormalizedDocument:
     entity: str
@@ -115,6 +121,10 @@ def _extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
     except (ValueError, AttributeError):
         return None
     return RelatedRef(guid=guid, entity=short)
+
+
+def extract_related_ref(payload: dict[str, Any]) -> RelatedRef | None:
+    return _extract_related_ref(payload)
 
 
 def normalize_document(entity: str, payload: dict[str, Any]) -> NormalizedDocument:
@@ -216,17 +226,10 @@ class OneCClient:
                     raw_partner = normalized.raw_payload["Партнер"]
                 raw_partner["НаименованиеПолное"] = partner_name
         if normalized.related_realization_ref is not None:
-            ref = normalized.related_realization_ref
-            try:
-                resp = await self._get_realization(ref.entity, ref.guid)
-                if resp.status_code == 200:
-                    rp = resp.json()
-                    normalized.related_realization_number = str(rp.get("Number", ""))
-                    normalized.related_realization_date = parse_odata_date(rp.get("Date"))
-                else:
-                    log.warning("realization lookup %s returned %s", ref.guid, resp.status_code)
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
-                log.warning("realization lookup %s failed: %s", ref.guid, e)
+            summary = await self.fetch_related_realization(normalized.related_realization_ref)
+            if summary is not None:
+                normalized.related_realization_number = summary.number
+                normalized.related_realization_date = summary.doc_date
         return normalized
 
     async def _get_partner_name(self, entity: str, guid: uuid.UUID) -> str | None:
@@ -247,6 +250,20 @@ class OneCClient:
     async def _get_realization(self, entity: str, guid: uuid.UUID) -> httpx.Response:
         url = f"/{entity}(guid'{guid}')"
         return await self._client.get(url, params={"$format": "json", "$select": "Number,Date"})
+
+    async def fetch_related_realization(self, ref: RelatedRef) -> RealizationSummary | None:
+        try:
+            resp = await self._get_realization(ref.entity, ref.guid)
+            if resp.status_code == 200:
+                payload = resp.json()
+                return RealizationSummary(
+                    number=str(payload.get("Number", "")),
+                    doc_date=parse_odata_date(payload.get("Date")),
+                )
+            log.warning("realization lookup %s returned %s", ref.guid, resp.status_code)
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.NetworkError) as e:
+            log.warning("realization lookup %s failed: %s", ref.guid, e)
+        return None
 
     async def _get_transfer_receiver_name(self, entity: str, guid: uuid.UUID) -> str | None:
         url = f"/{entity}(guid'{guid}')/СкладПолучатель"

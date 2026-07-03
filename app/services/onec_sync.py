@@ -5,16 +5,18 @@ from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import OneCDocument, SystemSetting
-from app.services.odata import OneCClient, parse_odata_date
+from app.services.odata import OneCClient, extract_related_ref, parse_odata_date
 
 log = logging.getLogger(__name__)
 
 PAGE_SIZE = 1000
 SYNC_STATUS_KEY = "onec_sync_status"
+RELATED_LOOKUP_CONCURRENCY = 10
 
 _sync_lock = asyncio.Lock()
 
@@ -46,11 +48,51 @@ def _parse_invoice_row(row: dict[str, Any]) -> dict[str, Any]:
         "is_correction": bool(row.get("Корректировочный", False)),
         "partner_name": partner_name,
         "is_edo": bool(row.get("ВыставленВЭлектронномВиде", False)),
-        "related_realization_number": None,  # resolved lazily when added to envelope
+        "related_realization_number": None,
         "kzv_copy_link": row.get("kzvСсылкаНаКопию") or None,
         "is_deleted": bool(row.get("DeletionMark", False)),
         "last_synced_at": datetime.now(UTC),
     }
+
+
+async def _enrich_related_realizations(
+    client: OneCClient,
+    raw_rows: list[dict[str, Any]],
+    parsed_rows: list[dict[str, Any]],
+) -> None:
+    semaphore = asyncio.Semaphore(RELATED_LOOKUP_CONCURRENCY)
+
+    async def enrich(raw_row: dict[str, Any], parsed: dict[str, Any]) -> None:
+        ref = extract_related_ref(raw_row)
+        if ref is None:
+            return
+        async with semaphore:
+            summary = await client.fetch_related_realization(ref)
+        if summary is not None and summary.number:
+            parsed["related_realization_number"] = summary.number
+
+    await asyncio.gather(
+        *(enrich(raw_row, parsed) for raw_row, parsed in zip(raw_rows, parsed_rows, strict=True))
+    )
+
+
+async def _parse_invoice_page(
+    client: OneCClient,
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    parsed: list[dict[str, Any]] = []
+    parsed_raw: list[dict[str, Any]] = []
+    errors = 0
+    for row in rows:
+        try:
+            parsed.append(_parse_invoice_row(row))
+            parsed_raw.append(row)
+        except Exception:
+            ref_key = row.get("Ref_Key", "<unknown>")
+            log.exception("skip malformed invoice row: Ref_Key=%s", ref_key)
+            errors += 1
+    await _enrich_related_realizations(client, parsed_raw, parsed)
+    return parsed, errors
 
 
 async def _upsert_batch(session: AsyncSession, rows: list[dict[str, Any]]) -> None:
@@ -66,6 +108,10 @@ async def _upsert_batch(session: AsyncSession, rows: list[dict[str, Any]]) -> No
             "is_correction": stmt.excluded.is_correction,
             "partner_name": stmt.excluded.partner_name,
             "is_edo": stmt.excluded.is_edo,
+            "related_realization_number": func.coalesce(
+                stmt.excluded.related_realization_number,
+                OneCDocument.related_realization_number,
+            ),
             "kzv_copy_link": stmt.excluded.kzv_copy_link,
             "is_deleted": stmt.excluded.is_deleted,
             "last_synced_at": stmt.excluded.last_synced_at,
@@ -112,14 +158,8 @@ async def run_initial_sync(
             )
             if not rows:
                 break
-            parsed: list[dict[str, Any]] = []
-            for row in rows:
-                try:
-                    parsed.append(_parse_invoice_row(row))
-                except Exception:
-                    ref_key = row.get("Ref_Key", "<unknown>")
-                    log.exception("skip malformed invoice row: Ref_Key=%s", ref_key)
-                    errors += 1
+            parsed, page_errors = await _parse_invoice_page(client, rows)
+            errors += page_errors
             await _upsert_batch(session, parsed)
             await session.commit()
             total += len(parsed)
@@ -180,14 +220,8 @@ async def run_incremental_sync(
             )
             if not rows:
                 break
-            parsed: list[dict[str, Any]] = []
-            for row in rows:
-                try:
-                    parsed.append(_parse_invoice_row(row))
-                except Exception:
-                    ref_key = row.get("Ref_Key", "<unknown>")
-                    log.exception("skip malformed invoice row: Ref_Key=%s", ref_key)
-                    errors += 1
+            parsed, page_errors = await _parse_invoice_page(client, rows)
+            errors += page_errors
             await _upsert_batch(session, parsed)
             await session.commit()
             total += len(parsed)

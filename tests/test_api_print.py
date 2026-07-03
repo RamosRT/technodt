@@ -9,8 +9,9 @@ from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
-from app.models import OneCDocument
+from app.models import EnvelopeDocument, OneCDocument
 from app.services.odata import NormalizedDocument
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ async def test_print_inventory_enriches_local_cache_fields(client, db_session, s
 
     rendered = {}
 
-    async def fake_pdf(html: str) -> bytes:
+    async def fake_pdf(html: str, **_: object) -> bytes:
         rendered["html"] = html
         return FAKE_PDF
 
@@ -120,6 +121,78 @@ async def test_print_inventory_enriches_local_cache_fields(client, db_session, s
 
 
 @pytest.mark.asyncio
+async def test_print_inventory_fetches_missing_related_realization_from_1c(
+    client, db_session, stub_one_c
+):
+    client.cookies.set("operator_name", "Tester")
+    guid = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    db_session.add(
+        OneCDocument(
+            guid=guid,
+            number="ТАУТ-0006000",
+            print_number="УТ-6000",
+            doc_date=date(2026, 6, 30),
+            is_correction=False,
+            partner_name="ООО Клиент",
+            is_edo=False,
+            related_realization_number=None,
+            is_deleted=False,
+        )
+    )
+    await db_session.commit()
+    env = (await client.post("/api/envelopes", json={})).json()
+    barcode = str(int.from_bytes(guid.bytes, "big"))
+    await client.post(f"/api/envelopes/{env['id']}/documents", json={"barcode": barcode})
+    b1 = (await client.post("/api/branches", json={"name": "Отправитель"})).json()
+    b2 = (await client.post("/api/branches", json={"name": "Получатель"})).json()
+    s1 = (await client.post("/api/signers", json={"last_name": "Иванов", "first_name": "И"})).json()
+    s2 = (await client.post("/api/signers", json={"last_name": "Петров", "first_name": "П"})).json()
+    sealed = (await client.post(
+        f"/api/envelopes/{env['id']}/seal",
+        json={
+            "signer_sender_id": s1["id"],
+            "signer_receiver_id": s2["id"],
+            "origin_branch_id": b1["id"],
+            "destination_branch_id": b2["id"],
+        },
+    )).json()
+    stub_one_c.lookup_document_with_related.reset_mock()
+    stub_one_c.lookup_document_with_related.return_value = NormalizedDocument(
+        entity="Document_СчетФактураВыданный",
+        doc_kind="УПД",
+        doc_number="УТ-6000",
+        doc_date=date(2026, 6, 30),
+        related_realization_ref=None,
+        raw_payload={},
+        partner_name="ООО Клиент",
+        related_realization_number="РТ-6000",
+        related_realization_date=date(2026, 6, 29),
+    )
+
+    rendered = {}
+
+    async def fake_pdf(html: str, **_: object) -> bytes:
+        rendered["html"] = html
+        return FAKE_PDF
+
+    with (
+        patch("app.services.printing._html_to_pdf", side_effect=fake_pdf),
+        patch("app.services.printing.generate_barcode_svg", return_value=FAKE_SVG),
+    ):
+        r = await client.get(f"/api/envelopes/{sealed['id']}/print/inventory")
+
+    assert r.status_code == 200
+    assert "РТ-6000" in rendered["html"]
+    stub_one_c.lookup_document_with_related.assert_awaited_once_with(guid)
+    stored_doc = (
+        await db_session.execute(
+            select(EnvelopeDocument).where(EnvelopeDocument.doc_guid == guid)
+        )
+    ).scalar_one()
+    assert stored_doc.related_realization_number == "РТ-6000"
+
+
+@pytest.mark.asyncio
 async def test_print_inventory_filename_contains_envelope_number(client, stub_one_c):
     env = await _sealed_envelope(client)
     with (
@@ -128,7 +201,7 @@ async def test_print_inventory_filename_contains_envelope_number(client, stub_on
     ):
         r = await client.get(f"/api/envelopes/{env['id']}/print/inventory")
     disposition = r.headers.get("content-disposition", "")
-    assert "attachment" in disposition
+    assert "inline" in disposition
     assert env["number"].replace("ТА-", "TA-") in disposition or env["number"] in disposition
 
 
