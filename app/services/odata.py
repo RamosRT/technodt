@@ -72,6 +72,7 @@ def _odata_query(params: dict[str, str]) -> str:
 PROP_REGISTERED = uuid.UUID("bda8ba09-4787-11f1-92ca-00155d060d01")
 PROP_SEALED = uuid.UUID("d034a826-4787-11f1-92ca-00155d060d01")
 PROP_VERIFIED = uuid.UUID("daa0fcae-4787-11f1-92ca-00155d060d01")
+PROP_INVOICE_SENT_TO_ACCOUNTING = uuid.UUID("7996104c-45ed-11ea-811f-001e67ead229")
 
 
 @dataclass(frozen=True)
@@ -310,6 +311,53 @@ class OneCClient:
                     return
                 raise OneCUnavailable(f"1С PATCH mark вернула {patch_resp.status_code}")
         raise OneCUnavailable(f"1С POST mark вернула {resp.status_code}")
+
+    async def mark_document_boolean(
+        self,
+        doc_guid: uuid.UUID,
+        doc_entity: str,
+        property_key: uuid.UUID,
+        value: bool,
+    ) -> None:
+        url = (
+            "/InformationRegister_"
+            "\u0414\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c"
+            "\u043d\u044b\u0435\u0421\u0432\u0435\u0434\u0435\u043d\u0438\u044f"
+        )
+        body = {
+            "\u041e\u0431\u044a\u0435\u043a\u0442": str(doc_guid),
+            "\u041e\u0431\u044a\u0435\u043a\u0442_Type": f"StandardODATA.{doc_entity}",
+            "\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u043e_Key": str(property_key),
+            "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435": value,
+            "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435_Type": "Edm.Boolean",
+        }
+        params = {"$format": "json"}
+        resp = await self._client.post(url, json=body, params=params)
+        if resp.status_code in (200, 201):
+            return
+        if resp.status_code == 400:
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
+            nested_error = data.get("odata.error") if isinstance(data, dict) else None
+            nested_code = nested_error.get("code") if isinstance(nested_error, dict) else None
+            err_code = data.get("code") if isinstance(data, dict) else None
+            if str(err_code or nested_code) == "15":
+                patch_url = (
+                    f"{url}(\u041e\u0431\u044a\u0435\u043a\u0442='{doc_guid}',"
+                    f"\u041e\u0431\u044a\u0435\u043a\u0442_Type='StandardODATA.{doc_entity}',"
+                    f"\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u043e_Key=guid'{property_key}')"
+                )
+                patch_body = {
+                    "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435": value,
+                    "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435_Type": "Edm.Boolean",
+                }
+                patch_resp = await self._client.patch(patch_url, json=patch_body, params=params)
+                if patch_resp.status_code in (200, 204):
+                    return
+                raise OneCUnavailable(f"1C PATCH boolean mark returned {patch_resp.status_code}")
+        raise OneCUnavailable(f"1C POST boolean mark returned {resp.status_code}")
 
     async def fetch_invoices_page(
         self,

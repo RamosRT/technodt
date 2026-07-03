@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_admin, require_operator
+from app.auth import require_operator
 from app.db import get_session, get_session_factory
 from app.deps import get_one_c_client
 from app.exceptions import AppError
@@ -147,7 +147,6 @@ async def seal_envelope(
 async def unseal_envelope(
     envelope_id: uuid.UUID,
     body: UnsealRequest,
-    _admin: None = require_admin(),
     operator: str = require_operator(),
     session: AsyncSession = Depends(get_session),
 ):

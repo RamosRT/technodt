@@ -306,6 +306,9 @@ async def process_paperless_marked_documents(
                 session,
                 onec_client,
                 raise_on_patch_error=True,
+                accounting_mark_from_date=getattr(
+                    settings, "paperless_accounting_mark_from_date", None
+                ),
                 **event,
             )
             if result.get("status") == "matched":

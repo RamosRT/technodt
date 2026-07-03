@@ -3,11 +3,11 @@
 <script>onEnvelopeLoaded('{{ envelope.id }}', '{{ envelope.barcode }}', {{ documents|length }});</script>
 {% set env_status = envelope.status.value if envelope.status.value is defined else envelope.status %}
 
-{% if is_admin and env_status == 'sealed' %}
+{% if operator and env_status == 'sealed' %}
 <div class="unseal-panel" id="unseal-panel-{{ envelope.id }}">
   <div class="unseal-icon"><i data-lucide="lock-open"></i></div>
   <div class="unseal-text">
-    <strong>Редактирование состава (только Admin)</strong>
+    <strong>Редактирование состава</strong>
     <span>Конверт запечатан. Распечатайте его, чтобы отредактировать состав, затем запечатайте снова.</span>
   </div>
   <button class="btn-unseal"
@@ -142,7 +142,7 @@
   </div>
 </div>
 
-{% if is_admin and env_status == 'sealed' %}
+{% if operator and env_status == 'sealed' %}
 <div class="modal-backdrop" id="unseal-modal-{{ envelope.id }}" style="display:none">
 <div class="modal-box">
   <div class="modal-title"><i data-lucide="triangle-alert"></i> Подтверждение распечатки</div>

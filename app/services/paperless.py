@@ -7,7 +7,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import OneCDocument
-from app.services.odata import OneCClient
+from app.services.odata import PROP_INVOICE_SENT_TO_ACCOUNTING, OneCClient
 
 log = logging.getLogger(__name__)
 
@@ -146,6 +146,7 @@ async def process_paperless_event(
     archive_path: str | None,   # DOCUMENT_ARCHIVE_PATH — UNC path to the file
     download_url: str | None,   # DOCUMENT_DOWNLOAD_URL — HTTP link in Paperless
     raise_on_patch_error: bool = False,
+    accounting_mark_from_date: date | None = None,
     correspondent: str | None = None,  # accepted for API compat; not used in matching
 ) -> dict[str, Any]:
     if not _is_invoice_type(doc_type):
@@ -219,6 +220,13 @@ async def process_paperless_event(
         await client.patch_storage_link(
             match.guid, "Document_СчетФактураВыданный", onec_link
         )
+        if accounting_mark_from_date is not None and match.doc_date >= accounting_mark_from_date:
+            await client.mark_document_boolean(
+                match.guid,
+                "Document_СчетФактураВыданный",
+                PROP_INVOICE_SENT_TO_ACCOUNTING,
+                True,
+            )
     except Exception as exc:
         log.warning("failed to patch 1C storage link for %s: %s", match.guid, exc)
         if raise_on_patch_error:
@@ -253,6 +261,7 @@ async def process_paperless_batch(
             original_filename=ev.get("original_filename"),
             archive_path=ev.get("archive_path"),
             download_url=ev.get("download_url"),
+            accounting_mark_from_date=ev.get("accounting_mark_from_date"),
             correspondent=ev.get("correspondent"),
         )
         results.append({"input": ev, "result": result})

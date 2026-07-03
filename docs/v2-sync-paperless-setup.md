@@ -39,6 +39,7 @@ PAPERLESS_ONEC_ORIGINALS_UNC_ROOT=\\kaz-pc036\Техно-Архив
 PAPERLESS_ONEC_ARCHIVE_UNC_ROOT=
 PAPERLESS_POLL_INTERVAL_MINUTES=0
 PAPERLESS_POLL_BATCH_SIZE=50
+PAPERLESS_ACCOUNTING_MARK_FROM_DATE=
 SYNC_INITIAL_FROM_DATE=2023-01-01
 SYNC_SCHEDULE_HOURS=4
 ```
@@ -55,6 +56,7 @@ SYNC_SCHEDULE_HOURS=4
 - `PAPERLESS_ERROR_TAG_ID` - тег Paperless "Ошибка отметки в 1С"; ставится при ошибке матчинга или PATCH в 1С.
 - `PAPERLESS_ONEC_ORIGINALS_UNC_ROOT` - UNC-root, который пишется в `kzvСсылкаНаКопию` для файлов из `metadata.media_filename`.
 - `PAPERLESS_POLL_INTERVAL_MINUTES=0` выключает автополлинг. Поставить `1`, `5` и т.п., если нужно регулярное фоновое отслеживание.
+- `PAPERLESS_ACCOUNTING_MARK_FROM_DATE` - пусто: не ставить boolean-реквизит `Счет-фактура сдана в бухгалтерию`. Дата `YYYY-MM-DD`: после успешной записи ссылки в 1С ставить реквизит в `true` только для документов с датой `>=` указанной.
 - `SYNC_INITIAL_FROM_DATE` - с какой даты грузить документы при первичном заполнении.
 - `SYNC_SCHEDULE_HOURS` - период авто-синхронизации в часах. `4` означает каждые 4 часа. `0` отключает scheduler.
 

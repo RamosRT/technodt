@@ -33,7 +33,6 @@
             onclick="setMode('verify');setActiveTab(this)">
       <i data-lucide="scan-line"></i> Верификация
     </button>
-    {% if is_admin %}
     <button class="ta-nav-item" type="button"
             hx-get="/ui/envelopes" hx-target="#main-area" hx-swap="innerHTML"
             onclick="setMode('idle');setActiveTab(this)">
@@ -44,6 +43,7 @@
             onclick="setMode('idle');setActiveTab(this)">
       <i data-lucide="file-text"></i> Документы
     </button>
+    {% if is_admin %}
     <button class="ta-nav-item" type="button"
             hx-get="/ui/report" hx-target="#main-area" hx-swap="innerHTML"
             onclick="setMode('idle');setActiveTab(this)">

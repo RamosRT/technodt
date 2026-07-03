@@ -746,11 +746,11 @@ async def ui_unseal_envelope(
     operator: str | None = Depends(_operator),
     is_admin: bool = Depends(get_is_admin),
 ):
-    if not is_admin:
-        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>', status_code=401)
     try:
         envelope = await env_svc.get_by_id(session, envelope_id)
-        await env_svc.unseal(session, envelope=envelope, reason=reason, operator=operator or "unknown")
+        await env_svc.unseal(session, envelope=envelope, reason=reason, operator=operator)
         await session.commit()
         envelope = await env_svc.get_by_id(session, envelope_id)
     except AppError as e:
@@ -778,8 +778,6 @@ async def ui_documents_list(
 ):
     if not operator:
         return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
-    if not is_admin:
-        return HTMLResponse('<div class="alert alert-error">Нет прав администратора</div>', status_code=403)
     branch_uuid = _optional_uuid(branch_id)
     date_from = optional_query_date(date_from_raw)
     date_to = optional_query_date(date_to_raw)

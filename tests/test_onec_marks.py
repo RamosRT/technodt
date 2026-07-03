@@ -11,6 +11,7 @@ from app.exceptions import OneCUnavailable
 from app.models.envelope_document import EnvelopeDocument
 from app.services.odata import (
     MARK_ELIGIBLE_ENTITIES,
+    PROP_INVOICE_SENT_TO_ACCOUNTING,
     PROP_REGISTERED,
     PROP_SEALED,
     PROP_VERIFIED,
@@ -38,6 +39,7 @@ def test_prop_constants_have_correct_uuids():
     assert str(PROP_REGISTERED) == "bda8ba09-4787-11f1-92ca-00155d060d01"
     assert str(PROP_SEALED) == "d034a826-4787-11f1-92ca-00155d060d01"
     assert str(PROP_VERIFIED) == "daa0fcae-4787-11f1-92ca-00155d060d01"
+    assert str(PROP_INVOICE_SENT_TO_ACCOUNTING) == "7996104c-45ed-11ea-811f-001e67ead229"
 
 
 @pytest.mark.asyncio
@@ -85,6 +87,36 @@ async def test_mark_document_patches_on_nested_odata_error_code_15(client):
             params={"$format": "json"},
         ).respond(200)
         await client.mark_document(DOC_GUID, ENTITY, PROP_KEY, VALUE)
+    assert post_route.call_count == 1
+    assert patch_route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_document_boolean_posts_boolean_value(client):
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post(
+            url__regex=r".*/InformationRegister_.*",
+            params={"$format": "json"},
+        ).respond(201)
+        await client.mark_document_boolean(DOC_GUID, ENTITY, PROP_INVOICE_SENT_TO_ACCOUNTING, True)
+    assert route.call_count == 1
+    request_json = route.calls[0].request.content.decode("utf-8")
+    assert "Edm.Boolean" in request_json
+    assert "true" in request_json
+
+
+@pytest.mark.asyncio
+async def test_mark_document_boolean_patches_on_duplicate_code_15(client):
+    with respx.mock(base_url=BASE) as mock:
+        post_route = mock.post(
+            url__regex=r".*/InformationRegister_.*",
+            params={"$format": "json"},
+        ).respond(400, json={"code": "15"})
+        patch_route = mock.patch(
+            url__regex=r".*/InformationRegister_.*",
+            params={"$format": "json"},
+        ).respond(200)
+        await client.mark_document_boolean(DOC_GUID, ENTITY, PROP_INVOICE_SENT_TO_ACCOUNTING, True)
     assert post_route.call_count == 1
     assert patch_route.call_count == 1
 

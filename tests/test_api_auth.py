@@ -88,11 +88,52 @@ async def test_logout_clears_cookie(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_ui_documents_requires_admin(client, db_session):
+async def test_ui_documents_allows_operator(client, db_session):
     await ensure_operator(db_session, "Оператор", password="1234")
     await db_session.commit()
     await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
 
     r = await client.get("/ui/documents")
 
-    assert r.status_code == 403
+    assert r.status_code == 200
+    assert "documents-list-page" in r.text
+
+
+@pytest.mark.asyncio
+async def test_operator_dashboard_has_envelopes_and_documents_links(client, db_session):
+    await ensure_operator(db_session, "Оператор", password="1234")
+    await db_session.commit()
+    await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
+
+    r = await client.get("/")
+
+    assert r.status_code == 200
+    assert 'hx-get="/ui/envelopes"' in r.text
+    assert 'hx-get="/ui/documents"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_operator_can_see_unseal_control_on_sealed_envelope_card(client, db_session):
+    from datetime import UTC, datetime
+
+    from app.models import Envelope, EnvelopeStatus
+
+    await ensure_operator(db_session, "Оператор", password="1234")
+    envelope = Envelope(
+        number="ТА-100001",
+        barcode="1234567890123456",
+        status=EnvelopeStatus.sealed,
+        created_by="Оператор",
+        created_at=datetime(2026, 7, 3, 9, 0, tzinfo=UTC),
+        sealed_at=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+    )
+    db_session.add(envelope)
+    await db_session.commit()
+    await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
+
+    r = await client.get(f"/ui/envelopes/{envelope.id}/card")
+
+    assert r.status_code == 200
+    assert "Редактирование состава" in r.text
+    assert "только Admin" not in r.text
+    assert f'hx-post="/ui/envelopes/{envelope.id}/unseal"' in r.text

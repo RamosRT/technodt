@@ -86,6 +86,7 @@ async def paperless_post_consume(
         correspondent=event.correspondent,
         archive_path=archive_path,
         download_url=event.download_url,
+        accounting_mark_from_date=settings.paperless_accounting_mark_from_date,
     )
     if event.document_id:
         result["tags"] = await apply_paperless_webhook_tags(
@@ -108,5 +109,6 @@ async def paperless_batch(
     for ev in events:
         row = ev.model_dump()
         row["archive_path"] = await _archive_path_for_event(ev, settings)
+        row["accounting_mark_from_date"] = settings.paperless_accounting_mark_from_date
         payload.append(row)
     return await process_paperless_batch(session, client, payload)

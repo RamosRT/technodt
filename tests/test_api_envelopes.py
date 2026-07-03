@@ -181,6 +181,30 @@ async def test_seal_happy(client, stub_one_c):
 
 
 @pytest.mark.asyncio
+async def test_operator_can_unseal_sealed_envelope(client, stub_one_c):
+    client.cookies.set("operator_name", "Ivan")
+    env = (await client.post("/api/envelopes", json={})).json()
+    bc = _bc("11111111-1111-1111-1111-111111111111")
+    await client.post(f"/api/envelopes/{env['id']}/documents", json={"barcode": bc})
+    b1, b2, s1, s2 = await _make_dictionary_via_api(client)
+    sealed = (await client.post(f"/api/envelopes/{env['id']}/seal", json={
+        "signer_sender_id": s1["id"],
+        "signer_receiver_id": s2["id"],
+        "origin_branch_id": b1["id"],
+        "destination_branch_id": b2["id"],
+        "notes": None,
+    })).json()
+
+    r = await client.post(
+        f"/api/envelopes/{sealed['id']}/unseal",
+        json={"reason": "Исправить состав"},
+    )
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "draft"
+
+
+@pytest.mark.asyncio
 async def test_seal_empty_envelope_invalid(client, stub_one_c):
     client.cookies.set("operator_name", "Ivan")
     env = (await client.post("/api/envelopes", json={})).json()

@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     paperless_onec_archive_unc_root: str = ""
     paperless_poll_interval_minutes: int = 0
     paperless_poll_batch_size: int = 50
+    paperless_accounting_mark_from_date: date | None = None
     sync_initial_from_date: date = date(2023, 1, 1)
     sync_schedule_hours: int = 4
 
