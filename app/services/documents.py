@@ -106,7 +106,7 @@ async def list_documents(
     branch_id: uuid.UUID | None = None,
     search: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int | None = 50,
 ) -> tuple[list[dict], int, dict[str, int]]:
     stmt = _base_documents_stmt(
         date_from=date_from,
@@ -119,13 +119,13 @@ async def list_documents(
     count_stmt = stmt.with_only_columns(func.count(EnvelopeDocument.id)).order_by(None)
     total = (await session.execute(count_stmt)).scalar_one()
 
-    rows = (
-        await session.execute(
-            stmt.order_by(EnvelopeDocument.added_at.desc(), EnvelopeDocument.doc_number.desc())
-            .offset((max(page, 1) - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
+    rows_stmt = stmt.order_by(
+        EnvelopeDocument.added_at.desc(),
+        EnvelopeDocument.doc_number.desc(),
+    )
+    if page_size is not None:
+        rows_stmt = rows_stmt.offset((max(page, 1) - 1) * page_size).limit(page_size)
+    rows = (await session.execute(rows_stmt)).all()
 
     branch_ids = {
         branch_id

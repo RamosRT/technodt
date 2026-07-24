@@ -18,6 +18,8 @@ from app.models import (
 )
 from app.services.odata import PROP_REGISTERED, PROP_SEALED, PROP_VERIFIED
 
+_ENVELOPE_LOOKUP_BATCH_SIZE = 5000
+
 
 async def _fetch_envelopes_for_docs(
     session: AsyncSession,
@@ -28,26 +30,29 @@ async def _fetch_envelopes_for_docs(
 
     OriginBranch = aliased(Branch, name="origin_branch")
     DestBranch = aliased(Branch, name="dest_branch")
-    stmt = (
-        select(
-            EnvelopeDocument.doc_guid,
-            EnvelopeDocument.added_at,
-            Envelope.number,
-            Envelope.sealed_at,
-            Envelope.verified_at,
-            Envelope.verified_by,
-            Envelope.created_by,
-            Envelope.status,
-            OriginBranch.name.label("origin_branch_name"),
-            DestBranch.name.label("dest_branch_name"),
+    rows = []
+    for offset in range(0, len(doc_guids), _ENVELOPE_LOOKUP_BATCH_SIZE):
+        batch = doc_guids[offset : offset + _ENVELOPE_LOOKUP_BATCH_SIZE]
+        stmt = (
+            select(
+                EnvelopeDocument.doc_guid,
+                EnvelopeDocument.added_at,
+                Envelope.number,
+                Envelope.sealed_at,
+                Envelope.verified_at,
+                Envelope.verified_by,
+                Envelope.created_by,
+                Envelope.status,
+                OriginBranch.name.label("origin_branch_name"),
+                DestBranch.name.label("dest_branch_name"),
+            )
+            .join(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
+            .outerjoin(OriginBranch, OriginBranch.id == Envelope.origin_branch_id)
+            .outerjoin(DestBranch, DestBranch.id == Envelope.destination_branch_id)
+            .where(EnvelopeDocument.doc_guid.in_(batch))
+            .order_by(EnvelopeDocument.doc_guid, EnvelopeDocument.added_at)
         )
-        .join(Envelope, Envelope.id == EnvelopeDocument.envelope_id)
-        .outerjoin(OriginBranch, OriginBranch.id == Envelope.origin_branch_id)
-        .outerjoin(DestBranch, DestBranch.id == Envelope.destination_branch_id)
-        .where(EnvelopeDocument.doc_guid.in_(doc_guids))
-        .order_by(EnvelopeDocument.doc_guid, EnvelopeDocument.added_at)
-    )
-    rows = (await session.execute(stmt)).all()
+        rows.extend((await session.execute(stmt)).all())
 
     by_guid: dict[uuid.UUID, list[dict[str, Any]]] = {}
     for row in rows:
@@ -78,7 +83,7 @@ async def list_report_documents(
     only_without_envelope: bool = False,
     only_without_edo: bool = False,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int | None = 50,
 ) -> tuple[list[dict[str, Any]], int]:
     def mark_sub(prop_key: uuid.UUID, label: str):
         return (
@@ -141,13 +146,10 @@ async def list_report_documents(
     count_stmt = stmt.with_only_columns(func.count(OneCDocument.guid)).order_by(None)
     total: int = (await session.execute(count_stmt)).scalar_one()
 
-    rows = (
-        await session.execute(
-            stmt.order_by(OneCDocument.doc_date.desc(), OneCDocument.print_number)
-            .offset((max(page, 1) - 1) * page_size)
-            .limit(page_size)
-        )
-    ).all()
+    rows_stmt = stmt.order_by(OneCDocument.doc_date.desc(), OneCDocument.print_number)
+    if page_size is not None:
+        rows_stmt = rows_stmt.offset((max(page, 1) - 1) * page_size).limit(page_size)
+    rows = (await session.execute(rows_stmt)).all()
 
     doc_guids = [row.OneCDocument.guid for row in rows]
     envelopes_by_guid = await _fetch_envelopes_for_docs(session, doc_guids)

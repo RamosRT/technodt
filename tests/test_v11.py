@@ -78,3 +78,28 @@ async def test_document_list_summary_counts_in_transit(db_session):
     assert rows[0]["status"] == "in_transit"
     assert summary["total"] == 1
     assert summary["in_transit"] == 1
+
+
+@pytest.mark.asyncio
+async def test_document_list_can_disable_pagination_for_csv_export(db_session):
+    envelope = await _sealed_envelope(db_session)
+    db_session.add(
+        EnvelopeDocument(
+            envelope_id=envelope.id,
+            doc_barcode="2",
+            doc_guid="00000000-0000-0000-0000-000000000002",
+            doc_entity="Document_Test",
+            doc_kind="УПД",
+            doc_number="2",
+            doc_date=date(2026, 4, 30),
+            raw_1c_payload={},
+        )
+    )
+    await db_session.commit()
+
+    paged_rows, total, _ = await doc_svc.list_documents(db_session, page_size=1)
+    exported_rows, _, _ = await doc_svc.list_documents(db_session, page_size=None)
+
+    assert total == 2
+    assert len(paged_rows) == 1
+    assert len(exported_rows) == 2

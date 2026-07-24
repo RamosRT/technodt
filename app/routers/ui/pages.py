@@ -927,12 +927,12 @@ async def ui_report(
         params.update(overrides)
         return "&".join(f"{k}={v}" for k, v in params.items())
 
-    csv_params = _qs(page_size="10000")
+    csv_params = _qs()
     csv_export_url = app_url(request, "/api/report/documents")
     if csv_params:
         csv_export_url = f"{csv_export_url}?{csv_params}&format=csv"
     else:
-        csv_export_url = f"{csv_export_url}?format=csv&page_size=10000"
+        csv_export_url = f"{csv_export_url}?format=csv"
 
     from app.schemas.report import ReportDocumentRow
     return templates.TemplateResponse(

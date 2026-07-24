@@ -67,7 +67,7 @@ async def export_documents(
         branch_id=branch_uuid,
         search=search,
         page=1,
-        page_size=10000,
+        page_size=None,
     )
     csv_body = build_documents_csv(items)
     return Response(

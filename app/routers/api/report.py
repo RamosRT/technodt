@@ -39,7 +39,7 @@ async def documents_report(
         only_without_envelope=only_without_envelope,
         only_without_edo=only_without_edo,
         page=page,
-        page_size=page_size,
+        page_size=None if format == "csv" else page_size,
     )
     if format == "csv":
         csv_body = build_report_documents_csv(items)

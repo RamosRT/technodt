@@ -1,11 +1,30 @@
 import uuid
 from datetime import UTC, date, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.models import Envelope, EnvelopeDocument, EnvelopeStatus, OneCDocument, OneCMarkLog
 from app.services.odata import PROP_REGISTERED
 from app.services.operators import ensure_operator
+from app.services.report import _ENVELOPE_LOOKUP_BATCH_SIZE, _fetch_envelopes_for_docs
+
+
+class _EmptyResult:
+    def all(self):
+        return []
+
+
+@pytest.mark.asyncio
+async def test_envelope_lookup_batches_large_document_sets():
+    session = AsyncMock()
+    session.execute.return_value = _EmptyResult()
+    guids = [uuid.uuid4() for _ in range(_ENVELOPE_LOOKUP_BATCH_SIZE + 1)]
+
+    result = await _fetch_envelopes_for_docs(session, guids)
+
+    assert result == {}
+    assert session.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -181,24 +200,37 @@ async def test_documents_report_lists_all_envelopes(client, db_session):
 @pytest.mark.asyncio
 async def test_documents_report_csv_export(client, db_session):
     operator = await ensure_operator(db_session, "report-user", password="1234")
-    db_session.add(
-        OneCDocument(
-            guid=uuid.uuid4(),
-            number="000000124",
-            print_number="124",
-            doc_date=date(2026, 5, 20),
-            is_correction=True,
-            partner_name="АО Клиент",
-            is_edo=False,
-            is_deleted=False,
-        )
+    db_session.add_all(
+        [
+            OneCDocument(
+                guid=uuid.uuid4(),
+                number="000000124",
+                print_number="124",
+                doc_date=date(2026, 5, 20),
+                is_correction=True,
+                partner_name="АО Клиент",
+                is_edo=False,
+                is_deleted=False,
+            ),
+            OneCDocument(
+                guid=uuid.uuid4(),
+                number="000000125",
+                print_number="125",
+                doc_date=date(2026, 5, 19),
+                is_correction=False,
+                partner_name="Second partner",
+                is_edo=False,
+                is_deleted=False,
+            ),
+        ]
     )
     await db_session.commit()
     client.cookies.set("operator_name", operator.username)
 
-    response = await client.get("/api/report/documents?format=csv&page_size=10000")
+    response = await client.get("/api/report/documents?format=csv&page_size=1")
 
     assert response.status_code == 200
     assert "text/csv" in response.headers["content-type"]
     assert 'filename="document-report.csv"' in response.headers["content-disposition"]
     assert "УКД;124;2026-05-20;АО Клиент" in response.text
+    assert ";125;2026-05-19;Second partner;" in response.text
