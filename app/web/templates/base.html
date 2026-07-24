@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ТехноКонверт</title>
-<link rel="stylesheet" href="{{ app_url(request, '/static/style.css') }}">
+<link rel="stylesheet" href="{{ app_url(request, '/static/style.css?v=20260724-4') }}">
 <script src="{{ app_url(request, '/static/htmx.min.js') }}" defer></script>
-<script src="{{ app_url(request, '/static/app.js') }}" defer></script>
+<script src="{{ app_url(request, '/static/app.js?v=20260724-2') }}" defer></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer onload="lucide.createIcons()"></script>
 </head>
 <body class="{% if operator %}is-authenticated{% else %}is-login{% endif %}" hx-boost="false">
@@ -42,6 +42,11 @@
             hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML"
             onclick="setMode('idle');setActiveTab(this)">
       <i data-lucide="file-text"></i> Документы
+    </button>
+    <button class="ta-nav-item ta-nav-discrepancies" type="button"
+            hx-get="/ui/discrepancies" hx-target="#main-area" hx-swap="innerHTML"
+            onclick="setMode('discrepancy');setActiveTab(this)">
+      <i data-lucide="shield-alert"></i> Обработка расхождений
     </button>
     {% if is_admin %}
     <button class="ta-nav-item" type="button"

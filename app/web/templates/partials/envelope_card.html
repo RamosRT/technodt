@@ -21,7 +21,11 @@
 <div class="card">
   <div class="card-title">
     <span class="card-heading">{{ envelope.number }}</span>
+    {% if discrepancy_closed %}
+    <span class="badge badge-discrepancy-closed"><i data-lucide="badge-check"></i> Расхождение закрыто</span>
+    {% else %}
     <span class="badge badge-{{ env_status }}">{{ status_labels[env_status] }}</span>
+    {% endif %}
     <div class="ml-auto env-bc-compact">
       {% if env_status == 'draft' %}
       <svg id="env-bc-svg" aria-label="Envelope barcode"></svg>
@@ -33,7 +37,73 @@
     <div class="env-meta-item"><i data-lucide="circle-user"></i><div><label>Оператор</label><span>{{ envelope.created_by }}</span></div></div>
     <div class="env-meta-item"><i data-lucide="calendar-days"></i><div><label>Создан</label><span>{{ envelope.created_at.strftime('%d.%m.%Y %H:%M') }}</span></div></div>
     <div class="env-meta-item"><i data-lucide="file-text"></i><div><label>Документов</label><span>{{ documents|length }}</span></div></div>
+    <div class="env-meta-item env-meta-note">
+      <i data-lucide="message-square-text"></i>
+      <div>
+        <label>Примечание</label>
+        <span title="{{ envelope.notes or '' }}">{{ envelope.notes or "—" }}</span>
+      </div>
+    </div>
   </div>
+
+  {% if env_status in ('verified', 'verified_with_discrepancy') %}
+  <section class="verification-result verification-result-{{ 'ok' if env_status == 'verified' or discrepancy_closed else 'discrepancy' }}"
+           aria-labelledby="verification-result-title">
+    <div class="verification-result-status">
+      <div class="verification-result-icon" aria-hidden="true">
+        <i data-lucide="{{ 'circle-check' if env_status == 'verified' or discrepancy_closed else 'triangle-alert' }}"></i>
+      </div>
+      <div class="verification-result-copy">
+        <span class="verification-result-kicker">Итоги проверки</span>
+        <h3 id="verification-result-title">
+          {% if env_status == 'verified' %}
+          Все документы получены
+          {% elif discrepancy_closed %}
+          Расхождение закрыто
+          {% else %}
+          Обнаружено расхождение
+          {% endif %}
+        </h3>
+        <p>
+          Проверил: <strong>{{ envelope.verified_by or '—' }}</strong>
+          {% if envelope.verified_at %}
+          · {{ envelope.verified_at.strftime('%d.%m.%Y %H:%M') }}
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="verification-result-stats">
+      <div class="verification-stat-total">
+        <strong>{{ documents|length }}</strong>
+        <span>Всего</span>
+      </div>
+      <div class="verification-stat-received">
+        <strong>{{ received_count }}</strong>
+        <span>Получено</span>
+      </div>
+      <div class="verification-stat-missing">
+        <strong>{{ missing_count }}</strong>
+        <span>Не получено при проверке</span>
+      </div>
+    </div>
+    <div class="verification-result-action">
+      {% if env_status == 'verified_with_discrepancy' %}
+      {% if discrepancy_closed %}
+      <span>Все недостающие документы позднее сданы</span>
+      {% else %}
+      <span>Осталось сдать: {{ unresolved_count }}</span>
+      {% endif %}
+      <a class="btn verification-act-button"
+         href="/api/envelopes/{{ envelope.id }}/print/discrepancy-act"
+         target="_blank">
+        <i data-lucide="printer"></i> Повторная печать
+      </a>
+      {% else %}
+      <span class="verification-complete-note"><i data-lucide="check"></i> Расхождений нет</span>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
 
   {% if env_status == 'draft' %}
   <!-- manual barcode input for keyboard entry -->
@@ -112,6 +182,7 @@
           {% elif ev.event == 'seal' %}dot-seal
           {% elif ev.event == 'unseal' %}dot-unseal
           {% elif 'verify' in ev.event %}dot-verify
+          {% elif 'discrepancy' in ev.event %}dot-doc
           {% endif %}"></div>
         <div class="audit-event-body">
           <div class="audit-event-title">
@@ -123,6 +194,8 @@
             {% elif ev.event == 'verify_start' %}Верификация начата
             {% elif ev.event == 'verify_scan' %}Документ отсканирован
             {% elif ev.event == 'verify_finish' %}Верификация завершена
+            {% elif ev.event == 'discrepancy_resolved' %}Документ сдан после расхождения{% if ev.payload.doc_number %}: {{ ev.payload.doc_number }}{% endif %}
+            {% elif ev.event == 'discrepancy_resolution_undo' %}Отменена сдача документа{% if ev.payload.doc_number %}: {{ ev.payload.doc_number }}{% endif %}
             {% else %}{{ ev.event }}
             {% endif %}
           </div>
@@ -131,6 +204,8 @@
             <span><i data-lucide="clock"></i> {{ ev.at.strftime('%d.%m.%Y %H:%M') }}</span>
           </div>
           {% if ev.event == 'unseal' and ev.payload.reason %}
+          <div class="audit-detail">Причина: {{ ev.payload.reason }}</div>
+          {% elif ev.event == 'discrepancy_resolution_undo' and ev.payload.reason %}
           <div class="audit-detail">Причина: {{ ev.payload.reason }}</div>
           {% endif %}
         </div>

@@ -118,7 +118,12 @@ async def list_envelopes(
     for env in envelopes:
         missing_count = 0
         if env.status is EnvelopeStatus.verified_with_discrepancy:
-            missing_count = sum(1 for doc in env.documents if doc.scanned_at_verification is None)
+            missing_count = sum(
+                1
+                for doc in env.documents
+                if doc.scanned_at_verification is None
+                and doc.discrepancy_resolved_at is None
+            )
         items.append(
             {
                 "id": env.id,
@@ -130,12 +135,17 @@ async def list_envelopes(
                 "verified_at": env.verified_at,
                 "created_by": env.created_by,
                 "verified_by": env.verified_by,
+                "notes": env.notes,
                 "origin_branch_id": env.origin_branch_id,
                 "destination_branch_id": env.destination_branch_id,
                 "origin_branch_name": branch_names.get(env.origin_branch_id),
                 "destination_branch_name": branch_names.get(env.destination_branch_id),
                 "document_count": len(env.documents),
                 "missing_count": missing_count,
+                "discrepancy_closed": (
+                    env.status is EnvelopeStatus.verified_with_discrepancy
+                    and missing_count == 0
+                ),
             }
         )
     return items, total

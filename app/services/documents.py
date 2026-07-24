@@ -25,6 +25,8 @@ def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime
 def _status_expr(status: str | None):
     if status == "verified":
         return EnvelopeDocument.scanned_at_verification.is_not(None)
+    if status == "resolved":
+        return EnvelopeDocument.discrepancy_resolved_at.is_not(None)
     if status == "in_transit":
         return (
             (Envelope.status == EnvelopeStatus.sealed)
@@ -34,6 +36,7 @@ def _status_expr(status: str | None):
         return (
             (Envelope.status == EnvelopeStatus.verified_with_discrepancy)
             & (EnvelopeDocument.scanned_at_verification.is_(None))
+            & (EnvelopeDocument.discrepancy_resolved_at.is_(None))
         )
     return None
 
@@ -84,6 +87,8 @@ def _base_documents_stmt(
 def document_status(doc: EnvelopeDocument, envelope: Envelope) -> str:
     if doc.scanned_at_verification is not None:
         return "verified"
+    if doc.discrepancy_resolved_at is not None:
+        return "resolved"
     if envelope.status is EnvelopeStatus.verified_with_discrepancy:
         return "missing"
     if envelope.status is EnvelopeStatus.sealed:
@@ -134,7 +139,7 @@ async def list_documents(
         branch_names = {row.id: row.name for row in branch_rows}
 
     items = []
-    summary = {"total": total, "verified": 0, "in_transit": 0, "missing": 0}
+    summary = {"total": total, "verified": 0, "resolved": 0, "in_transit": 0, "missing": 0}
     all_rows = (
         await session.execute(
             _base_documents_stmt(
@@ -165,6 +170,8 @@ async def list_documents(
                 "doc_date": doc.doc_date,
                 "added_at": doc.added_at,
                 "scanned_at_verification": doc.scanned_at_verification,
+                "discrepancy_resolved_at": doc.discrepancy_resolved_at,
+                "discrepancy_resolved_by": doc.discrepancy_resolved_by,
                 "status": state,
                 "envelope_id": envelope.id,
                 "envelope_number": envelope.number,
@@ -194,6 +201,7 @@ def build_documents_csv(rows: list[dict]) -> str:
             "Добавлен",
             "Запечатан",
             "Верифицирован",
+            "Сдан после расхождения",
         ]
     )
     for row in rows:
@@ -208,6 +216,11 @@ def build_documents_csv(rows: list[dict]) -> str:
                 row["added_at"].isoformat() if row["added_at"] else "",
                 row["sealed_at"].isoformat() if row["sealed_at"] else "",
                 row["scanned_at_verification"].isoformat() if row["scanned_at_verification"] else "",
+                (
+                    row["discrepancy_resolved_at"].isoformat()
+                    if row["discrepancy_resolved_at"]
+                    else ""
+                ),
             ]
         )
     return output.getvalue()

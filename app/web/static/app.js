@@ -4,7 +4,7 @@
 
 // ─── Scanner state ──────────────────────────────────────────────
 const App = {
-  mode: "idle",          // idle | register | verify
+  mode: "idle",          // idle | register | verify | discrepancy
   envelopeId: null,      // current envelope UUID
   envelopeBarcode: null, // current envelope barcode
   envelopeDocsCount: 0,  // current envelope document count
@@ -71,7 +71,12 @@ function isUserInput(el) {
 }
 
 function scannerFocusEnabled() {
-  return isLoginScreen() || App.mode === "register" || App.mode === "verify";
+  return (
+    isLoginScreen()
+    || App.mode === "register"
+    || App.mode === "verify"
+    || App.mode === "discrepancy"
+  );
 }
 
 function isLoginScreen() {
@@ -285,6 +290,10 @@ function handleLoginQrScan(raw) {
 
 async function dispatch(barcode) {
   if (App.mode === "idle") return;
+  if (App.mode === "discrepancy") {
+    resolveDiscrepancy(barcode);
+    return;
+  }
   if (App.mode === "verify") {
     if (App.awaitingEnvBC) {
       openVerifyEnvelope(barcode);
@@ -398,6 +407,25 @@ function finishVerify(force) {
   });
 }
 
+// ─── Discrepancy resolution ────────────────────────────────────
+function resolveDiscrepancy(barcode) {
+  if (!barcode) return;
+  htmx.ajax("POST", "/ui/discrepancies/resolve", {
+    target: "#discrepancy-workspace",
+    swap: "outerHTML",
+    values: { barcode },
+  });
+}
+
+function onDiscrepancyWorkspaceLoaded() {
+  App.mode = "discrepancy";
+  App.envelopeId = null;
+  App.envelopeBarcode = null;
+  App.awaitingEnvBC = false;
+  updateModeBar();
+  requestAnimationFrame(ensureFocus);
+}
+
 async function printZplLabel(envelopeId, printerId) {
   const normalizedPrinterId = String(printerId || "").trim();
   if (!normalizedPrinterId) {
@@ -487,6 +515,10 @@ function updateModeBar() {
       bar.textContent = "Верификация";
       hint && (hint.textContent = "Сканируйте документы из конверта");
     }
+  } else if (App.mode === "discrepancy") {
+    bar.classList.add("mode-discrepancy");
+    bar.textContent = "Обработка расхождений";
+    hint && (hint.textContent = "Сканируйте найденный документ");
   }
 }
 

@@ -18,6 +18,8 @@ class DocumentOut(BaseModel):
     related_realization_date: date | None = None
     added_at: datetime
     scanned_at_verification: datetime | None = None
+    discrepancy_resolved_at: datetime | None = None
+    discrepancy_resolved_by: str | None = None
 
     @field_validator("doc_kind", mode="before")
     @classmethod

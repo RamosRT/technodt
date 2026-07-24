@@ -3,7 +3,7 @@
   <input class="form-control" type="date" name="date_to" value="{{ audit_filters.date_to }}">
   <select class="form-control" name="event">
     <option value="">Все события</option>
-    {% for ev_name in ["create", "add_doc", "remove_doc", "seal", "unseal", "verify_start", "verify_scan", "verify_finish"] %}
+    {% for ev_name in ["create", "add_doc", "remove_doc", "seal", "unseal", "verify_start", "verify_scan", "verify_finish", "discrepancy_resolved", "discrepancy_resolution_undo"] %}
     <option value="{{ ev_name }}" {% if audit_filters.event == ev_name %}selected{% endif %}>{{ ev_name }}</option>
     {% endfor %}
   </select>

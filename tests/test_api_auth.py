@@ -137,3 +137,92 @@ async def test_operator_can_see_unseal_control_on_sealed_envelope_card(client, d
     assert "Редактирование состава" in r.text
     assert "только Admin" not in r.text
     assert f'hx-post="/ui/envelopes/{envelope.id}/unseal"' in r.text
+
+
+@pytest.mark.asyncio
+async def test_envelope_notes_are_shown_in_card_and_list(client, db_session):
+    from datetime import UTC, datetime
+
+    from app.models import Envelope, EnvelopeStatus
+
+    await ensure_operator(db_session, "Оператор", password="1234")
+    note = "Передать документы лично в бухгалтерию"
+    envelope = Envelope(
+        number="ТА-100003",
+        barcode="1234567890123458",
+        status=EnvelopeStatus.sealed,
+        created_by="Оператор",
+        created_at=datetime(2026, 7, 3, 9, 0, tzinfo=UTC),
+        sealed_at=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+        notes=note,
+    )
+    db_session.add(envelope)
+    await db_session.commit()
+    await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
+
+    card = await client.get(f"/ui/envelopes/{envelope.id}/card")
+    envelope_list = await client.get("/ui/envelopes")
+
+    assert card.status_code == 200
+    assert envelope_list.status_code == 200
+    assert "Примечание" in card.text
+    assert note in card.text
+    assert "Примечание" in envelope_list.text
+    assert note in envelope_list.text
+
+
+@pytest.mark.asyncio
+async def test_verified_envelope_card_shows_verification_result_and_discrepancy_act(
+    client, db_session
+):
+    import uuid
+    from datetime import UTC, date, datetime
+
+    from app.models import Envelope, EnvelopeDocument, EnvelopeStatus
+
+    await ensure_operator(db_session, "Оператор", password="1234")
+    envelope = Envelope(
+        number="ТА-100002",
+        barcode="1234567890123457",
+        status=EnvelopeStatus.verified_with_discrepancy,
+        created_by="Отправитель",
+        created_at=datetime(2026, 7, 3, 9, 0, tzinfo=UTC),
+        sealed_at=datetime(2026, 7, 3, 10, 0, tzinfo=UTC),
+        verified_at=datetime(2026, 7, 4, 11, 30, tzinfo=UTC),
+        verified_by="Получатель",
+    )
+    envelope.documents = [
+        EnvelopeDocument(
+            doc_barcode="1",
+            doc_guid=uuid.uuid4(),
+            doc_entity="Document_СчетФактураВыданный",
+            doc_kind="УПД",
+            doc_number="УТ-100",
+            doc_date=date(2026, 7, 1),
+            raw_1c_payload={},
+            scanned_at_verification=datetime(2026, 7, 4, 11, 20, tzinfo=UTC),
+        ),
+        EnvelopeDocument(
+            doc_barcode="2",
+            doc_guid=uuid.uuid4(),
+            doc_entity="Document_СчетФактураВыданный",
+            doc_kind="УПД",
+            doc_number="УТ-101",
+            doc_date=date(2026, 7, 1),
+            raw_1c_payload={},
+        ),
+    ]
+    db_session.add(envelope)
+    await db_session.commit()
+    await client.post("/api/auth/login", json={"username": "Оператор", "password": "1234"})
+
+    r = await client.get(f"/ui/envelopes/{envelope.id}/card")
+
+    assert r.status_code == 200
+    assert "Итоги проверки" in r.text
+    assert "Получено" in r.text
+    assert "Не получено" in r.text
+    assert "УТ-101" in r.text
+    assert "verification-row-missing" in r.text
+    assert "Повторная печать" in r.text
+    assert f"/api/envelopes/{envelope.id}/print/discrepancy-act" in r.text

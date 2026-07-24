@@ -10,6 +10,9 @@
       <th>Номер</th>
       <th>Дата</th>
       <th>Клиент</th>
+      {% if env_status in ('verified', 'verified_with_discrepancy') %}
+      <th class="col-status">Итог проверки</th>
+      {% endif %}
       {% if env_status == 'draft' %}
       <th class="col-action"></th>
       {% endif %}
@@ -19,12 +22,26 @@
     {% for doc in documents %}
     {% set partner_name = doc.raw_1c_payload.get('Партнер', {}).get('НаименованиеПолное') if doc.raw_1c_payload else None %}
     {% set receiver_name = doc.raw_1c_payload.get('СкладПолучатель', {}).get('Description') if doc.raw_1c_payload else None %}
-    <tr id="doc-row-{{ doc.id }}">
+    <tr id="doc-row-{{ doc.id }}"
+        class="{% if env_status in ('verified', 'verified_with_discrepancy') %}{% if doc.scanned_at_verification %}verification-row-received{% elif doc.discrepancy_resolved_at %}verification-row-resolved{% else %}verification-row-missing{% endif %}{% endif %}">
       <td class="col-num text-muted">{{ loop.index }}</td>
       <td>{{ doc.doc_kind }}</td>
       <td class="font-mono">{{ doc.doc_number }}</td>
       <td>{{ doc.doc_date.strftime('%d.%m.%Y') }}</td>
       <td>{{ partner_name or receiver_name or "—" }}</td>
+      {% if env_status in ('verified', 'verified_with_discrepancy') %}
+      <td>
+        {% if doc.scanned_at_verification %}
+        <span class="scan-status-ok"><i data-lucide="circle-check"></i> Получен</span>
+        {% elif doc.discrepancy_resolved_at %}
+        <span class="scan-status-resolved" title="{{ doc.discrepancy_resolved_by or '' }}">
+          <i data-lucide="badge-check"></i> Сдан позже
+        </span>
+        {% else %}
+        <span class="scan-status-missing"><i data-lucide="circle-x"></i> Не получен</span>
+        {% endif %}
+      </td>
+      {% endif %}
       {% if env_status == 'draft' %}
       <td class="col-action">
         <button class="btn-icon" title="Удалить"

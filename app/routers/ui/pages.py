@@ -13,6 +13,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.services.dictionaries as dict_svc
+import app.services.discrepancies as discrepancy_svc
 import app.services.envelopes as env_svc
 import app.services.printers as printer_svc
 import app.services.system_settings as settings_svc
@@ -61,6 +62,7 @@ STATUS_LABELS = {
 
 DOCUMENT_STATUS_LABELS = {
     "verified": "Верифицирован",
+    "resolved": "Сдан после расхождения",
     "in_transit": "В пути",
     "missing": "Недостача",
     "draft": "Черновик",
@@ -141,6 +143,25 @@ async def _verify_meta(session: AsyncSession, envelope) -> dict:
         "signer_receiver_name": (
             f"{signer_receiver_name[0]} {signer_receiver_name[1]}" if signer_receiver_name else None
         ),
+    }
+
+
+async def _discrepancy_context(
+    session: AsyncSession,
+    *,
+    operator: str | None,
+    is_admin: bool,
+    success: str | None = None,
+    error: str | None = None,
+) -> dict:
+    rows, stats = await discrepancy_svc.list_discrepancies(session)
+    return {
+        "operator": operator,
+        "is_admin": is_admin,
+        "discrepancies": rows,
+        "discrepancy_stats": stats,
+        "success": success,
+        "error": error,
     }
 
 
@@ -298,9 +319,25 @@ async def _envelope_card_context(
         operator_row = (
             await session.execute(select(Operator).where(Operator.username == operator))
         ).scalar_one_or_none()
+    received_count = sum(
+        1 for document in envelope.documents if document.scanned_at_verification is not None
+    )
+    unresolved_count = sum(
+        1
+        for document in envelope.documents
+        if document.scanned_at_verification is None
+        and document.discrepancy_resolved_at is None
+    )
     return {
         "envelope": envelope,
         "documents": envelope.documents,
+        "received_count": received_count,
+        "missing_count": len(envelope.documents) - received_count,
+        "unresolved_count": unresolved_count,
+        "discrepancy_closed": (
+            envelope.status is EnvelopeStatus.verified_with_discrepancy
+            and unresolved_count == 0
+        ),
         "branches": branches,
         "signers": signers,
         "status_labels": STATUS_LABELS,
@@ -312,6 +349,10 @@ async def _envelope_card_context(
 
 
 def _event_icon(event: str) -> str:
+    if event == "discrepancy_resolved":
+        return "badge-check"
+    if event == "discrepancy_resolution_undo":
+        return "undo-2"
     if event == "verify_finish":
         return "check-circle-2"
     if event in {"add_doc", "create"}:
@@ -326,6 +367,10 @@ def _event_icon(event: str) -> str:
 
 
 def _event_tone(event: str) -> str:
+    if event == "discrepancy_resolved":
+        return "green"
+    if event == "discrepancy_resolution_undo":
+        return "red"
     if event == "verify_finish":
         return "green"
     if event in {"seal", "verify_scan"}:
@@ -353,6 +398,12 @@ def _event_title(event: str, payload: dict | None, envelope_number: str | None) 
         return f"Завершена верификация {envelope_number or ''}".strip()
     if event == "verify_scan":
         return f"Отсканирован документ в {envelope_number or 'конверте'}"
+    if event == "discrepancy_resolved":
+        doc = payload.get("doc_number") or "документ"
+        return f"Сдан после расхождения: {doc}"
+    if event == "discrepancy_resolution_undo":
+        doc = payload.get("doc_number") or "документ"
+        return f"Отменена сдача после расхождения: {doc}"
     return f"Событие: {event}"
 
 
@@ -1040,6 +1091,105 @@ async def ui_verify_finish(
         "missing_count": len(result.missing_docs),
         "operator_row": operator_row,
     })
+
+
+# ─── Discrepancy resolution ──────────────────────────────────────────────────
+
+@router.get("/ui/discrepancies", response_class=HTMLResponse)
+async def ui_discrepancies(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    return templates.TemplateResponse(
+        request,
+        "partials/discrepancies.html",
+        await _discrepancy_context(
+            session,
+            operator=operator,
+            is_admin=is_admin,
+        ),
+    )
+
+
+@router.post("/ui/discrepancies/resolve", response_class=HTMLResponse)
+async def ui_resolve_discrepancy(
+    request: Request,
+    barcode: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    success = None
+    error = None
+    try:
+        document = await discrepancy_svc.resolve_by_barcode(
+            session,
+            barcode=barcode,
+            operator=operator,
+        )
+        await session.commit()
+        success = f"Документ {document.doc_number} отмечен как сданный"
+    except AppError as exc:
+        await session.rollback()
+        error = exc.detail
+    return templates.TemplateResponse(
+        request,
+        "partials/discrepancies.html",
+        await _discrepancy_context(
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            success=success,
+            error=error,
+        ),
+    )
+
+
+@router.post("/ui/discrepancies/{document_id}/undo", response_class=HTMLResponse)
+async def ui_undo_discrepancy_resolution(
+    request: Request,
+    document_id: uuid.UUID,
+    reason: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    operator: str | None = Depends(_operator),
+    is_admin: bool = Depends(get_is_admin),
+):
+    if not operator:
+        return HTMLResponse('<div class="alert alert-error">Требуется войти в систему</div>')
+    success = None
+    error = None
+    if not is_admin:
+        error = "Отменить отметку может только администратор"
+    else:
+        try:
+            document = await discrepancy_svc.undo_resolution(
+                session,
+                document_id=document_id,
+                reason=reason,
+                operator=operator,
+            )
+            await session.commit()
+            success = f"Отметка для документа {document.doc_number} отменена"
+        except AppError as exc:
+            await session.rollback()
+            error = exc.detail
+    return templates.TemplateResponse(
+        request,
+        "partials/discrepancies.html",
+        await _discrepancy_context(
+            session,
+            operator=operator,
+            is_admin=is_admin,
+            success=success,
+            error=error,
+        ),
+    )
 
 
 # ─── Admin / dictionaries ─────────────────────────────────────────────────────

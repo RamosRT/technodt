@@ -17,6 +17,10 @@
       <div class="s-chip-icon"><i data-lucide="triangle-alert"></i></div>
       <div><div class="s-chip-num" style="color:#b71c1c">{{ summary.missing }}</div><div class="s-chip-label">Недостача</div></div>
     </div>
+    <div class="s-chip chip-resolved">
+      <div class="s-chip-icon"><i data-lucide="badge-check"></i></div>
+      <div><div class="s-chip-num" style="color:#087f73">{{ summary.resolved }}</div><div class="s-chip-label">Сданы позже</div></div>
+    </div>
   </div>
 
   <form class="filter-bar" hx-get="/ui/documents" hx-target="#main-area" hx-swap="innerHTML">
@@ -34,6 +38,7 @@
       <option value="verified" {% if filters.status == "verified" %}selected{% endif %}>Верифицирован</option>
       <option value="in_transit" {% if filters.status == "in_transit" %}selected{% endif %}>В пути</option>
       <option value="missing" {% if filters.status == "missing" %}selected{% endif %}>Недостача</option>
+      <option value="resolved" {% if filters.status == "resolved" %}selected{% endif %}>Сдан после расхождения</option>
     </select>
     <select class="filter-select" name="branch_id">
       <option value="">Все филиалы</option>
@@ -66,7 +71,7 @@
       </thead>
       <tbody>
         {% for doc in documents %}
-        <tr class="{% if doc.status == 'missing' %}row-discrepancy{% elif doc.status == 'verified' %}row-ok{% endif %}">
+        <tr class="{% if doc.status == 'missing' %}row-discrepancy{% elif doc.status in ('verified', 'resolved') %}row-ok{% endif %}">
           <td><span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:#e8edf6;color:#2874b9">{{ doc.doc_kind or '—' }}</span></td>
           <td style="font-weight:600;color:#1b2848">{{ doc.doc_number or '—' }}</td>
           <td style="color:#8895a7">{{ doc.doc_date.strftime('%d.%m.%Y') if doc.doc_date else '—' }}</td>
@@ -86,7 +91,7 @@
             {% if doc.scanned_at_verification %}
               {{ doc.scanned_at_verification.strftime('%d.%m %H:%M') }}<br>
               <span style="color:#8895a7">{{ doc.verified_by or '' }}</span>
-            {% elif doc.status == 'missing' %}
+            {% elif doc.status in ('missing', 'resolved') %}
               <span style="color:#cc0c00;font-style:italic">— не отсканирован</span>
             {% else %}
               <span style="color:#8895a7;font-style:italic">— ожидает</span>
@@ -97,6 +102,8 @@
               <span class="status-pill sp-verified"><i data-lucide="circle-check"></i> Верифицирован</span>
             {% elif doc.status == 'missing' %}
               <span class="status-pill sp-discrepancy"><i data-lucide="triangle-alert"></i> Недостача</span>
+            {% elif doc.status == 'resolved' %}
+              <span class="status-pill sp-resolved"><i data-lucide="badge-check"></i> Сдан позже</span>
             {% elif doc.status == 'in_transit' %}
               <span class="status-pill sp-transit"><i data-lucide="truck"></i> В пути</span>
             {% else %}

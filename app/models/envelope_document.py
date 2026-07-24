@@ -31,5 +31,9 @@ class EnvelopeDocument(Base):
     raw_1c_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     scanned_at_verification: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discrepancy_resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    discrepancy_resolved_by: Mapped[str | None] = mapped_column(String(200))
 
     envelope: Mapped["Envelope"] = relationship(back_populates="documents")

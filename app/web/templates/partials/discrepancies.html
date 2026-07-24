@@ -1,0 +1,173 @@
+<div class="discrepancy-workspace" id="discrepancy-workspace">
+  <script>
+    onDiscrepancyWorkspaceLoaded();
+    {% if success %}playFeedback("success");{% elif error %}playFeedback("error");{% endif %}
+  </script>
+
+  <header class="discrepancy-header">
+    <div>
+      <span class="discrepancy-eyebrow">Контроль документов</span>
+      <h2>Обработка расхождений</h2>
+      <p>Сканируйте документы, которые были признаны неполученными при верификации.</p>
+    </div>
+    <div class="discrepancy-kpis">
+      <div class="discrepancy-kpi discrepancy-kpi-active">
+        <span>Ожидают сдачи</span>
+        <strong>{{ discrepancy_stats.active }}</strong>
+      </div>
+      <div class="discrepancy-kpi discrepancy-kpi-resolved">
+        <span>Сданы позже</span>
+        <strong>{{ discrepancy_stats.resolved }}</strong>
+      </div>
+    </div>
+  </header>
+
+  <section class="discrepancy-scanner">
+    <div class="discrepancy-scanner-icon"><i data-lucide="scan-barcode"></i></div>
+    <div class="discrepancy-scanner-copy">
+      <strong>Сканирование найденного документа</strong>
+      <span>Принимаются только документы из активных расхождений</span>
+    </div>
+    <form hx-post="/ui/discrepancies/resolve"
+          hx-target="#discrepancy-workspace"
+          hx-swap="outerHTML"
+          class="discrepancy-scan-form">
+      <input id="discrepancy-manual-barcode"
+             class="form-control"
+             name="barcode"
+             autocomplete="off"
+             placeholder="Штрихкод документа"
+             required>
+      <button class="btn btn-primary" type="submit">
+        <i data-lucide="badge-check"></i> Отметить сданным
+      </button>
+    </form>
+  </section>
+
+  {% if success %}
+  <div class="alert alert-success discrepancy-feedback">
+    <i data-lucide="circle-check"></i> {{ success }}
+  </div>
+  {% elif error %}
+  <div class="alert alert-error discrepancy-feedback">
+    <i data-lucide="circle-alert"></i> {{ error }}
+  </div>
+  {% endif %}
+
+  <section class="discrepancy-table-card">
+    <div class="discrepancy-table-title">
+      <div>
+        <h3>Документы с расхождениями</h3>
+        <span>Сначала показаны документы, которые ещё не были сданы</span>
+      </div>
+      <span class="discrepancy-total">{{ discrepancy_stats.total }}</span>
+    </div>
+    <div class="data-table-wrap">
+      <table class="data-table discrepancy-table">
+        <thead>
+          <tr>
+            <th>Статус</th>
+            <th>Документ</th>
+            <th>Дата</th>
+            <th>Клиент</th>
+            <th>Конверт</th>
+            <th>Расхождение выявлено</th>
+            <th>Сдан</th>
+            {% if is_admin %}<th></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in discrepancies %}
+          <tr class="{{ 'discrepancy-row-resolved' if row.is_resolved else 'discrepancy-row-active' }}">
+            <td>
+              {% if row.is_resolved %}
+              <span class="status-pill sp-resolved"><i data-lucide="badge-check"></i> Сдан позже</span>
+              {% else %}
+              <span class="status-pill sp-discrepancy"><i data-lucide="triangle-alert"></i> Не сдан</span>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ row.doc_kind }} {{ row.doc_number }}</strong>
+              <small class="discrepancy-barcode">{{ row.doc_barcode }}</small>
+            </td>
+            <td>{{ row.doc_date.strftime('%d.%m.%Y') }}</td>
+            <td>{{ row.partner_name or "—" }}</td>
+            <td>
+              <button class="table-link" type="button"
+                      hx-get="/ui/envelopes/{{ row.envelope_id }}/card"
+                      hx-target="#main-area" hx-swap="innerHTML"
+                      onclick="setMode('idle')">
+                {{ row.envelope_number }} <i data-lucide="arrow-up-right"></i>
+              </button>
+            </td>
+            <td class="discrepancy-lost-at">
+              <i data-lucide="calendar-x"></i>
+              {{ row.lost_at.strftime('%d.%m.%Y %H:%M') if row.lost_at else "—" }}
+            </td>
+            <td>
+              {% if row.resolved_at %}
+              <strong>{{ row.resolved_at.strftime('%d.%m.%Y %H:%M') }}</strong>
+              <small>{{ row.resolved_by or "—" }}</small>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            {% if is_admin %}
+            <td>
+              {% if row.is_resolved %}
+              <button class="btn-icon discrepancy-undo-button"
+                      type="button"
+                      title="Отменить отметку"
+                      onclick="openModal('discrepancy-undo-{{ row.id }}')">
+                <i data-lucide="undo-2"></i>
+              </button>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="{{ 8 if is_admin else 7 }}" class="discrepancy-empty">
+              <i data-lucide="badge-check"></i>
+              <strong>Расхождений пока нет</strong>
+              <span>Здесь появятся документы, не полученные при верификации.</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if is_admin %}
+    {% for row in discrepancies if row.is_resolved %}
+    <div id="discrepancy-undo-{{ row.id }}" hidden>
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal('discrepancy-undo-{{ row.id }}')">
+        <div class="modal">
+          <div class="modal-title">Отменить отметку «Сдан»</div>
+          <p class="modal-desc">
+            Документ <strong>{{ row.doc_kind }} {{ row.doc_number }}</strong> снова попадёт
+            в активные расхождения.
+          </p>
+          <form hx-post="/ui/discrepancies/{{ row.id }}/undo"
+                hx-target="#discrepancy-workspace"
+                hx-swap="outerHTML">
+            <div class="form-row">
+              <label>Причина отмены *</label>
+              <textarea class="form-control" name="reason" required
+                        placeholder="Например: документ отметили по ошибке"></textarea>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-ghost"
+                      onclick="closeModal('discrepancy-undo-{{ row.id }}')">Отмена</button>
+              <button type="submit" class="btn btn-danger">
+                <i data-lucide="undo-2"></i> Отменить отметку
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>

@@ -37,6 +37,7 @@
           <th>Оператор</th>
           <th>Создан</th>
           <th>Филиал-отправитель</th>
+          <th>Примечание</th>
           <th></th>
         </tr>
       </thead>
@@ -48,6 +49,8 @@
           <td>
             {% if st == 'verified' %}
               <span class="status-pill sp-verified"><i data-lucide="circle-check"></i> Верифицирован</span>
+            {% elif st == 'verified_with_discrepancy' and env.discrepancy_closed %}
+              <span class="status-pill sp-resolved"><i data-lucide="badge-check"></i> Расхождение закрыто</span>
             {% elif st == 'verified_with_discrepancy' %}
               <span class="status-pill sp-discrepancy"><i data-lucide="triangle-alert"></i> Расхождение</span>
             {% elif st == 'sealed' %}
@@ -65,6 +68,13 @@
           <td style="color:#556">{{ env.created_by }}</td>
           <td style="color:#8895a7">{{ env.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
           <td style="color:#556">{{ env.origin_branch_name or "—" }}</td>
+          <td class="envelope-note-cell">
+            {% if env.notes %}
+            <span class="envelope-note-preview" title="{{ env.notes }}">{{ env.notes }}</span>
+            {% else %}
+            <span class="envelope-note-empty">—</span>
+            {% endif %}
+          </td>
           <td>
             <button class="table-link" type="button"
                     hx-get="/ui/envelopes/{{ env.id }}/card"
@@ -74,7 +84,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" style="text-align:center;color:#8895a7;padding:24px">Конверты не найдены</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:#8895a7;padding:24px">Конверты не найдены</td></tr>
         {% endfor %}
       </tbody>
     </table>
